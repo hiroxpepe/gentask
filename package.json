@@ -1,0 +1,19 @@
+{
+  "name": "gentask",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "gen:dev": "tsx index.ts dev",
+    "gen:prod": "tsx index.ts prod"
+  },
+  "dependencies": {
+    "@genkit-ai/googleai": "^1.27.0",
+    "dotenv": "^17.2.3",
+    "genkit": "^1.27.0",
+    "zod": "^4.3.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  }
+}

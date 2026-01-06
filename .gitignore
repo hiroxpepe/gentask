@@ -1,0 +1,76 @@
+# ==========================================
+# Node.js + Genkit + Firebase 完全版
+# ==========================================
+
+# --- 依存関係 (Dependencies) ---
+node_modules/
+jspm_packages/
+.pnp/
+.pnp.js
+
+# --- Genkit 固有 (Genkit Specific) ---
+.genkit/
+genkit-state/
+
+# --- ビルド成果物 (Build Outputs) ---
+dist/
+build/
+out/
+lib/
+*.tsbuildinfo
+
+# --- Firebase / Google Cloud ---
+.firebase/
+*-debug.log
+firebase-debug.log*
+firestore-debug.log*
+pubsub-debug.log*
+ui-debug.log*
+# Firebase Functions のビルド成果物（プロジェクト構成による）
+functions/lib/
+functions/node_modules/
+.runtimeconfig.json
+
+# --- 環境変数・機密情報 (Secrets & Env) ---
+# APIキーが含まれるため、絶対にコミットしない
+.env
+.env.local
+.env.*.local
+.env.dev
+.env.development
+.env.test
+.env.prod
+.env.production
+*.pem
+*.key
+service-account.json
+google-cloud-key.json
+
+# --- ログ・キャッシュ (Logs & Cache) ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.eslintcache
+.stylelintcache
+.cache/
+.parcel-cache
+
+# --- テスト・カバレッジ (Test & Coverage) ---
+coverage/
+.nyc_output/
+
+# --- OS・エディタ (System & IDEs) ---
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.suo
+
+# --- Docker (Optional) ---
+.docker/
