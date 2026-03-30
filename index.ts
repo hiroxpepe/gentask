@@ -1,6 +1,7 @@
 import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 import { PlannerService } from './planner';
 import { task_schema, type gen_task } from './types';
 import { validate_env } from './env';
@@ -46,6 +47,8 @@ export const task_flow = ai_engine.defineFlow(
 /**
  * @description エントリポイント処理。CLI 引数を受け取り、生成からデプロイまでを統括。
  */
+const is_main = process.argv[1] === fileURLToPath(import.meta.url);
+if (is_main) {
 (async () => {
     // 第4引数以降をすべて結合して題材（Subject）とする
     const input_subject = process.argv.slice(3).join(' ');
@@ -67,3 +70,4 @@ export const task_flow = ai_engine.defineFlow(
         console.error('Fatal execution error:', error);
     }
 })();
+}
