@@ -1,5 +1,5 @@
 import { graph } from './graph';
-import { gen_task } from './index';
+import { type gen_task } from './types';
 
 /**
  * @class PlannerService
@@ -51,7 +51,7 @@ export class PlannerService {
             console.log(`  [Deploying] Mode: ${task.mode} | Title: ${task.title}`);
 
             // タスクの物理作成
-            await graph.post(`https://graph.microsoft.com/v1.0/planner/tasks`, {
+            const task_res = await graph.post(`https://graph.microsoft.com/v1.0/planner/tasks`, {
                 planId: plan_id,
                 bucketId: bucket_id,
                 title: task.title,
@@ -65,6 +65,14 @@ export class PlannerService {
                 },
                 // スキーマで指定されたカラーラベルを適用
                 appliedCategories: { [this.label_map[task.label]]: true }
+            });
+
+            // AI が生成した description を plannerTaskDetails に書き込む
+            // details リソースは tasks と同一 ID を共有し、作成直後に GET して ETag を取得してから PATCH する
+            const details_url = `https://graph.microsoft.com/v1.0/planner/tasks/${task_res.id}/details`;
+            const details_res = await graph.get(details_url);
+            await graph.patch(details_url, { description: task.description }, {
+                'If-Match': details_res['@odata.etag']
             });
         }
     }
