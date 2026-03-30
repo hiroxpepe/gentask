@@ -1,6 +1,7 @@
 import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 import { validate_env } from './env';
 import { OutlookService } from './outlook';
 import { graph } from './graph';
@@ -69,7 +70,7 @@ ${items_text}`,
  * @class PlannerSyncService
  * @description sync_flow の出力を受け取り、Planner に実際の変更を適用するサービス。
  */
-class PlannerSyncService {
+export class PlannerSyncService {
     private readonly base_url = 'https://graph.microsoft.com/v1.0/planner/tasks';
 
     async apply_actions(actions: sync_action[]): Promise<void> {
@@ -148,6 +149,8 @@ class PlannerSyncService {
  * @description sync コマンドのエントリポイント。
  * Outlook から紐付き予定を取得 → AI で解釈 → Planner に反映する。
  */
+const is_main = process.argv[1] === fileURLToPath(import.meta.url);
+if (is_main) {
 (async () => {
     try {
         const outlook = new OutlookService();
@@ -191,3 +194,4 @@ class PlannerSyncService {
         console.error('Fatal sync error:', error);
     }
 })();
+}

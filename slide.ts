@@ -1,6 +1,7 @@
 import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 import { validate_env } from './env';
 import { graph } from './graph';
 import { OutlookService } from './outlook';
@@ -39,7 +40,9 @@ function get_schedule_key(title: string): string | undefined {
 
 // ─── Graph API ヘルパー ───────────────────────────────────────────────────────
 
-interface PlannerTask {
+// ─── 型定義 ────────────────────────────────────────────────────────────────────
+
+export interface PlannerTask {
     id: string;
     title: string;
     bucketId: string;
@@ -49,13 +52,13 @@ interface PlannerTask {
     '@odata.etag': string;
 }
 
-interface PlannerBucket {
+export interface PlannerBucket {
     id: string;
     name: string;
 }
 
 /** グループ内プランを列挙し、最新（createdDateTime 降順）のプランを返す */
-async function get_latest_plan(group_id: string): Promise<{ id: string; title: string } | null> {
+export async function get_latest_plan(group_id: string): Promise<{ id: string; title: string } | null> {
     const res = await graph.get(`${GRAPH_BASE}/groups/${group_id}/planner/plans`);
     const plans = (res.value ?? []) as Array<{ id: string; title: string; createdDateTime: string }>;
     if (plans.length === 0) return null;
@@ -64,20 +67,20 @@ async function get_latest_plan(group_id: string): Promise<{ id: string; title: s
 }
 
 /** プラン内のバケットを名前→ID のマップで返す */
-async function get_buckets(plan_id: string): Promise<Map<string, string>> {
+export async function get_buckets(plan_id: string): Promise<Map<string, string>> {
     const res = await graph.get(`${GRAPH_BASE}/planner/plans/${plan_id}/buckets`);
     const buckets = (res.value ?? []) as PlannerBucket[];
     return new Map(buckets.map(b => [b.name, b.id]));
 }
 
 /** バケット内タスクを全件返す */
-async function get_tasks_in_bucket(bucket_id: string): Promise<PlannerTask[]> {
+export async function get_tasks_in_bucket(bucket_id: string): Promise<PlannerTask[]> {
     const res = await graph.get(`${GRAPH_BASE}/planner/buckets/${bucket_id}/tasks`);
     return (res.value ?? []) as PlannerTask[];
 }
 
 /** タスクの bucketId を変更してバケット間を移動する */
-async function move_task(task: PlannerTask, target_bucket_id: string): Promise<void> {
+export async function move_task(task: PlannerTask, target_bucket_id: string): Promise<void> {
     await graph.patch(`${GRAPH_BASE}/planner/tasks/${task.id}`, {
         bucketId: target_bucket_id,
     }, { 'If-Match': task['@odata.etag'] });
@@ -91,7 +94,7 @@ async function move_task(task: PlannerTask, target_bucket_id: string): Promise<v
  * 移動前に「投稿」タスク（spec §2 の締め切りタスク）の完了を確認する。
  * @returns 投稿タスクが完了していれば true、未完了なら false
  */
-async function archive_current_week(
+export async function archive_current_week(
     plan_id: string,
     buckets: Map<string, string>
 ): Promise<boolean> {
@@ -133,7 +136,7 @@ async function archive_current_week(
  * startDateTime を翌月曜（次の月曜日）に更新する。
  * @returns 昇格されたタスク一覧
  */
-async function promote_next_week(
+export async function promote_next_week(
     plan_id: string,
     buckets: Map<string, string>
 ): Promise<PlannerTask[]> {
@@ -176,7 +179,7 @@ async function promote_next_week(
  * @description 昇格タスクを spec §3 週間マトリクスに従い Outlook カレンダーへ配置する。
  * PLANNING_SCHEDULE でマッチするタスクは指定曜日/時刻に、それ以外は月曜 09:00 から順次配置。
  */
-async function schedule_promoted_tasks(tasks: PlannerTask[]): Promise<void> {
+export async function schedule_promoted_tasks(tasks: PlannerTask[]): Promise<void> {
     const outlook   = new OutlookService();
     const next_mon  = get_next_monday();
 
@@ -237,7 +240,7 @@ async function schedule_promoted_tasks(tasks: PlannerTask[]): Promise<void> {
  * @description 次々回話数のプロットタスク 4 ブロック（PTASK）を AI で生成し、
  * 来週分バケットに配置する。
  */
-async function generate_next_plot(
+export async function generate_next_plot(
     plan_id: string,
     buckets: Map<string, string>,
     episode_hint: string
@@ -284,7 +287,7 @@ async function generate_next_plot(
 // ─── 日付ユーティリティ ───────────────────────────────────────────────────────
 
 /** 次の月曜日 00:00:00 JST を返す */
-function get_next_monday(): Date {
+export function get_next_monday(): Date {
     const now  = new Date();
     const day  = now.getDay(); // 0=日, 1=月 ... 6=土
     const diff = day === 0 ? 1 : 8 - day; // 日曜なら翌月曜、それ以外は次の月曜
@@ -295,7 +298,7 @@ function get_next_monday(): Date {
 }
 
 /** 翌週の指定曜日（0=日〜6=土）の Date を返す */
-function get_weekday_date(base_monday: Date, target_day: number): Date {
+export function get_weekday_date(base_monday: Date, target_day: number): Date {
     const d = new Date(base_monday);
     d.setDate(base_monday.getDate() + (target_day - 1)); // base_monday は月曜(1)
     return d;
@@ -308,6 +311,8 @@ function get_weekday_date(base_monday: Date, target_day: number): Date {
  * 全モードのプランに対して投稿完了確認 → アーカイブ → 昇格 → スケジュール → 次週生成 を実行する。
  * 第3引数に次エピソードのヒントを渡す（例: npm run slide:dev -- "第42話 クライマックス編"）
  */
+const is_main = process.argv[1] === fileURLToPath(import.meta.url);
+if (is_main) {
 (async () => {
     const episode_hint = process.argv.slice(3).join(' ') || '次エピソード';
 
@@ -354,3 +359,4 @@ function get_weekday_date(base_monday: Date, target_day: number): Date {
         console.error('Fatal slide error:', error);
     }
 })();
+}
