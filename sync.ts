@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import { validate_env } from './env';
 import { OutlookService } from './outlook';
 import { graph } from './graph';
+import { snapshot } from './snapshot';
 import { sync_action_schema, type sync_input_item, type sync_action } from './types';
 
 // 環境設定
@@ -51,6 +52,7 @@ export const sync_flow = ai_engine.defineFlow(
 - 予定が後ろにずれた・"明日やる"・"後回し" → reschedule
 - 進捗メモ・気づき・作業ログ → add_note
 - "神回"、"倍かかった"、バッファ消費を示す記述 → buffer_consumed
+- "undo"、"戻して"、"元に戻す" → undo（直前の操作を取り消す）
 - 特に変化なし・白紙・デフォルト文面 → no_change
 
 予定一覧:
@@ -108,6 +110,33 @@ class PlannerSyncService {
                     await graph.patch(details_url, { description: updated }, {
                         'If-Match': details['@odata.etag']
                     });
+                    break;
+                }
+
+                case 'undo': {
+                    // snapshot から直前の状態を復元する
+                    const snap_map = snapshot.restore(action.plannerTaskId);
+                    if (snap_map.size === 0) {
+                        console.warn(`  [Undo]  No snapshot found for task: ${action.plannerTaskId}`);
+                        break;
+                    }
+                    for (const [url, snap] of snap_map) {
+                        // 復元対象フィールドをフィルタリング（etag や system フィールドを除外）
+                        const restorable_keys = [
+                            'percentComplete', 'dueDateTime', 'title', 'priority',
+                            'description',  // details URL の場合
+                        ];
+                        const restorable = Object.fromEntries(
+                            Object.entries(snap.state).filter(([k]) => restorable_keys.includes(k))
+                        );
+                        if (Object.keys(restorable).length === 0) break;
+
+                        const current = await graph.get(url);
+                        await graph.patch(url, restorable, {
+                            'If-Match': current['@odata.etag']
+                        });
+                        console.log(`  [Undo]  Restored ${Object.keys(restorable).join(', ')} → ${url}`);
+                    }
                     break;
                 }
             }

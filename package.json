@@ -6,7 +6,9 @@
     "gen:dev": "tsx index.ts dev",
     "gen:prod": "tsx index.ts prod",
     "sync:dev": "tsx sync.ts dev",
-    "sync:prod": "tsx sync.ts prod"
+    "sync:prod": "tsx sync.ts prod",
+    "slide:dev": "tsx slide.ts dev",
+    "slide:prod": "tsx slide.ts prod"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.27.0",
