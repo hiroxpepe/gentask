@@ -27,3 +27,47 @@ export const task_schema = z.object({
 });
 
 export type gen_task = z.infer<typeof task_schema>;
+
+// ─── Phase 2: Outlook ↔ Planner 同期 ────────────────────────────────────────
+
+/** Outlook カレンダーイベントの必要最小構造 */
+export type outlook_event = {
+    id: string;
+    subject: string;
+    body: { contentType: string; content: string };
+    start: { dateTime: string; timeZone: string };
+    end:   { dateTime: string; timeZone: string };
+    extensions?: Array<{ id: string; plannerTaskId?: string }>;
+};
+
+/** AI が判定した同期アクション */
+export const sync_action_schema = z.object({
+    plannerTaskId: z.string()
+        .describe('操作対象の Planner タスク ID'),
+
+    action: z.enum(['complete', 'reschedule', 'add_note', 'buffer_consumed', 'no_change'])
+        .describe(`解釈された操作種別：
+      - complete: タスクを完了（"ok"、"完了" などの記述）
+      - reschedule: 期限を変更（予定のスライド、"明日やる" など）
+      - add_note: メモを追記（進捗コメント、気づきなど）
+      - buffer_consumed: バッファを消費したが継続（"神回" 等の超過記述）
+      - no_change: 変化なし`),
+
+    note: z.string().optional()
+        .describe('add_note / buffer_consumed の場合に Planner へ追記するテキスト'),
+
+    newDueDate: z.string().optional()
+        .describe('reschedule の場合の新しい期限（ISO 8601 形式）'),
+});
+
+export type sync_action = z.infer<typeof sync_action_schema>;
+
+/** sync_flow への入力 — Outlook イベントの現在状態をまとめたもの */
+export type sync_input_item = {
+    outlookEventId: string;
+    plannerTaskId: string;
+    subject: string;
+    bodyContent: string;
+    currentStatus: number; // Planner percentComplete (0 / 50 / 100)
+};
+
