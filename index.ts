@@ -6,16 +6,6 @@ import { PlannerService } from './planner';
 import { task_schema, type gen_task } from './types';
 import { validate_env } from './env';
 
-// 実行時の引数から環境(dev/prod)を特定し、対応する .env をロード
-const target_env = process.argv[2] || 'dev';
-dotenv.config({ path: `.env.${target_env}` });
-
-// 必須環境変数が揃っているかを起動時に確認
-validate_env();
-
-/**
- * @description GenKit SDK の初期化設定。Google AI (Gemini) プラグインを使用。
- */
 const ai_engine = genkit({
     plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
     model: gemini20Flash,
@@ -49,6 +39,11 @@ export const task_flow = ai_engine.defineFlow(
  */
 const is_main = process.argv[1] === fileURLToPath(import.meta.url);
 if (is_main) {
+    // CLI 専用の副作用: 環境設定とバリデーションをエントリポイント内に限定
+    const target_env = process.argv[2] || 'dev';
+    dotenv.config({ path: `.env.${target_env}` });
+    validate_env();
+
 (async () => {
     // 第4引数以降をすべて結合して題材（Subject）とする
     const input_subject = process.argv.slice(3).join(' ');
