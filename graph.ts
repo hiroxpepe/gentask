@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { snapshot } from './snapshot';
 
 /**
  * @function run_az
@@ -52,6 +53,17 @@ export const graph = {
     },
 
     patch: async (url: string, body: object, headers: Record<string, string> = {}): Promise<any> => {
+        // Auto-snapshot: PATCH 適用前に現在状態を取得して保存する（undo の安全装置）
+        const task_id_match = url.match(/\/planner\/tasks\/([^/]+)/);
+        if (task_id_match) {
+            try {
+                const current_raw = await run_az(['rest', '--method', 'get', '--url', url]);
+                snapshot.save(task_id_match[1], url, JSON.parse(current_raw));
+            } catch {
+                // スナップショット失敗でも本体操作をブロックしない
+            }
+        }
+
         const payload = JSON.stringify(body);
         const header_args = Object.entries(headers).flatMap(([k, v]) => ['--header', `${k}=${v}`]);
         const stdout = await run_az(['rest', '--method', 'patch', '--url', url, '--body', '@-', ...header_args], payload);
