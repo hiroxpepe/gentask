@@ -1,21 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('./graph', () => ({
-    graph: {
-        post:  vi.fn(),
-        get:   vi.fn(),
-        patch: vi.fn(),
-    },
-}));
-
-vi.mock('./snapshot', () => ({
-    snapshot: {
-        save:            vi.fn(),
-        restore:         vi.fn(),
-        list_snapshots:  vi.fn(),
-    },
-}));
-
 // genkit と googleAI のモック（sync_flow の定義時に実行されるため必要）
 vi.mock('genkit', async () => {
     const zod = await import('zod');
@@ -32,13 +16,16 @@ vi.mock('@genkit-ai/googleai', () => ({
     gemini20Flash: 'gemini-2.0-flash',
 }));
 
-import { graph } from './graph';
-import { snapshot } from './snapshot';
+vi.mock('../lib/graph');
+vi.mock('../lib/snapshot');
+
+import { graph } from '../lib/graph';
+import { snapshot } from '../lib/snapshot';
 import { PlannerSyncService } from './sync';
 
-const mock_get   = graph.get   as ReturnType<typeof vi.fn>;
-const mock_patch = graph.patch as ReturnType<typeof vi.fn>;
-const mock_restore = snapshot.restore as ReturnType<typeof vi.fn>;
+const mock_get   = vi.mocked(graph.get);
+const mock_patch = vi.mocked(graph.patch);
+const mock_restore = vi.mocked(snapshot.restore);
 
 describe('PlannerSyncService.apply_actions', () => {
     beforeEach(() => {

@@ -2,6 +2,7 @@
   "name": "gentask",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "npm@11.12.1",
   "scripts": {
     "gen:dev": "tsx index.ts dev",
     "gen:prod": "tsx index.ts prod",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "zod-to-json-schema": "^3.25.2"
   }
 }

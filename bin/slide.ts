@@ -2,10 +2,10 @@ import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { validate_env } from './env';
-import { graph } from './graph';
-import { OutlookService } from './outlook';
-import { task_schema } from './types';
+import { validate_env } from '../lib/env';
+import { graph } from '../lib/graph';
+import { OutlookService } from '../lib/outlook';
+import { task_schema } from '../lib/types';
 
 // 環境設定
 const target_env = process.argv[2] || 'dev';
