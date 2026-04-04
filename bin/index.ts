@@ -2,9 +2,9 @@ import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { PlannerService } from './planner';
-import { task_schema, type gen_task } from './types';
-import { validate_env } from './env';
+import { PlannerService } from '../src/planner';
+import { task_schema, type gen_task } from '../lib/types';
+import { validate_env } from '../lib/env';
 
 const ai_engine = genkit({
     plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],

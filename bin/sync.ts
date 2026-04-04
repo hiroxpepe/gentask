@@ -2,11 +2,11 @@ import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { validate_env } from './env';
-import { OutlookService } from './outlook';
-import { graph } from './graph';
-import { snapshot } from './snapshot';
-import { sync_action_schema, type sync_input_item, type sync_action } from './types';
+import { validate_env } from '../lib/env';
+import { OutlookService } from '../lib/outlook';
+import { graph } from '../lib/graph';
+import { snapshot } from '../lib/snapshot';
+import { sync_action_schema, type sync_input_item, type sync_action } from '../lib/types';
 
 // 環境設定
 const target_env = process.argv[2] || 'dev';
@@ -38,9 +38,12 @@ export const sync_flow = ai_engine.defineFlow(
         if (items.length === 0) return [];
 
         const items_text = items.map((item, i) =>
-            `[${i + 1}] タスクID: ${item.plannerTaskId}\n` +
-            `    件名: ${item.subject}\n` +
-            `    本文: ${item.bodyContent.trim().slice(0, 300)}\n` +
+            `[${i + 1}] タスクID: ${item.plannerTaskId}
+` +
+            `    件名: ${item.subject}
+` +
+            `    本文: ${item.bodyContent.trim().slice(0, 300)}
+` +
             `    現在の進捗: ${item.currentStatus}%`
         ).join('\n\n');
 
@@ -106,7 +109,10 @@ export class PlannerSyncService {
                     const details = await graph.get(details_url);
                     const prev = (details.description as string | undefined) ?? '';
                     const updated = prev
-                        ? `${prev}\n\n---\n${new Date().toISOString()}: ${action.note}`
+                        ? `${prev}
+
+---
+${new Date().toISOString()}: ${action.note}`
                         : `${new Date().toISOString()}: ${action.note}`;
                     await graph.patch(details_url, { description: updated }, {
                         'If-Match': details['@odata.etag']
@@ -149,13 +155,11 @@ export class PlannerSyncService {
  * @description sync コマンドのエントリポイント。
  * Outlook から紐付き予定を取得 → AI で解釈 → Planner に反映する。
  */
-const is_main = process.argv[1] === fileURLToPath(import.meta.url);
-if (is_main) {
-(async () => {
+export async function main(
+    outlook = new OutlookService(),
+    sync_svc = new PlannerSyncService()
+) {
     try {
-        const outlook = new OutlookService();
-        const sync_svc = new PlannerSyncService();
-
         // 1. Outlook から gentask 拡張付き予定を取得
         console.log('🔍 Fetching linked Outlook events...');
         const linked_events = await outlook.get_linked_events();
@@ -189,9 +193,14 @@ if (is_main) {
         // 5. Planner に反映
         await sync_svc.apply_actions(actions);
 
-        console.log(`\n✨ Sync complete. ${active.length} task(s) updated.`);
+        console.log(`
+✨ Sync complete. ${active.length} task(s) updated.`);
     } catch (error) {
         console.error('Fatal sync error:', error);
     }
-})();
+}
+
+const is_main = process.argv[1] === fileURLToPath(import.meta.url);
+if (is_main) {
+    main();
 }

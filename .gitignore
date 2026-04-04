@@ -16,7 +16,7 @@ genkit-state/
 dist/
 build/
 out/
-lib/
+
 *.tsbuildinfo
 
 # --- Firebase / Google Cloud ---
@@ -27,7 +27,7 @@ firestore-debug.log*
 pubsub-debug.log*
 ui-debug.log*
 # Firebase Functions のビルド成果物（プロジェクト構成による）
-functions/lib/
+functions/
 functions/node_modules/
 .runtimeconfig.json
 
