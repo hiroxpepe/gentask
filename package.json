@@ -4,17 +4,22 @@
   "type": "module",
   "packageManager": "npm@11.12.1",
   "scripts": {
-    "gen:dev": "tsx index.ts dev",
-    "gen:prod": "tsx index.ts prod",
-    "sync:dev": "tsx sync.ts dev",
-    "sync:prod": "tsx sync.ts prod",
-    "slide:dev": "tsx slide.ts dev",
-    "slide:prod": "tsx slide.ts prod",
+    "gen:dev": "tsx bin/index.ts dev",
+    "gen:prod": "tsx bin/index.ts prod",
+    "sync:dev": "tsx bin/sync.ts dev",
+    "sync:prod": "tsx bin/sync.ts prod",
+    "slide:dev": "tsx bin/slide.ts dev",
+    "slide:prod": "tsx bin/slide.ts prod",
+    "check:graph": "tsx tools/check_graph_api.ts",
+    "check:vertex": "tsx tools/check_vertex_api.ts",
+    "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e-simple": "tsx tools/create_task_e2e_simple.ts",
+    "test:e2e": "tsx tools/create_task_e2e.ts"
   },
   "dependencies": {
-    "@genkit-ai/googleai": "^1.27.0",
+    "@genkit-ai/google-genai": "^1.31.0",
     "dotenv": "^17.2.3",
     "genkit": "^1.27.0",
     "zod": "^4.3.4"

@@ -1,5 +1,5 @@
 import { genkit, z } from 'genkit';
-import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
+import { vertexAI } from '@genkit-ai/google-genai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { validate_env } from '../lib/env';
@@ -10,11 +10,12 @@ import { task_schema } from '../lib/types';
 // 環境設定
 const target_env = process.argv[2] || 'dev';
 dotenv.config({ path: `.env.${target_env}` });
+
 validate_env();
 
 const ai_engine = genkit({
-    plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
-    model: gemini20Flash,
+    plugins: [vertexAI({ location: 'asia-northeast1' })],
+    model: vertexAI.model('gemini-2.5-pro'),
 });
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────

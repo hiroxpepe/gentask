@@ -14,7 +14,7 @@ dotenv.config({ path: `.env.${target_env}` });
 validate_env();
 
 const ai_engine = genkit({
-    plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
+    plugins: [googleAI()],
     model: gemini20Flash,
 });
 

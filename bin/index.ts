@@ -1,5 +1,5 @@
 import { genkit, z } from 'genkit';
-import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
+import { vertexAI } from '@genkit-ai/google-genai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { PlannerService } from '../src/planner';
@@ -7,8 +7,8 @@ import { task_schema, type gen_task } from '../lib/types';
 import { validate_env } from '../lib/env';
 
 const ai_engine = genkit({
-    plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
-    model: gemini20Flash,
+    plugins: [vertexAI({ location: 'asia-northeast1' })],
+    model: vertexAI.model('gemini-2.5-pro'),
 });
 
 export { task_schema, type gen_task };
