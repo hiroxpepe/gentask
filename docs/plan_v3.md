@@ -2,52 +2,15 @@
 
 ## 現状（Phase 2 完了）
 
-```
-コミット:
-c8ae856  feat: Phase 2 — Outlook sync, Open Extensions, AI progress interpretation
-e9fd7f2  refactor: Phase 1.5 — fix circular deps, async graph, description deploy
-991f541  docs: Create structured README with project philosophy
-
-ファイル構成:
-gentask/
-├── tsconfig.json    ✅
-├── types.ts         ✅ gen_task / outlook_event / sync_action
-├── env.ts           ✅ 起動時バリデーション
-├── graph.ts         ✅ post / get / patch (async)
-├── planner.ts       ✅ デプロイ + Outlook 連携 + Open Extension
-├── outlook.ts       ✅ create_event / get_linked_events / build_sync_inputs
-├── sync.ts          ✅ sync_flow + PlannerSyncService + CLI エントリ
-└── index.ts         ✅ task_flow + CLI エントリ
-```
-
 ---
 
 ## 仕様書との照合 — Phase 3 で対応すべき範囲
-
-| 仕様 (spec_v1.md) | 実装状態 |
-|---|---|
-| §4 インテリジェント・シンクロナイザー | ✅ Phase 2 で実装 |
-| §4 Open Extensions 永続 ID 紐付け | ✅ Phase 2 で実装 |
-| **§5 スナップショット・エンジン（記録）** | ❌ 未実装 |
-| **§5 Undo トリガー検知（"undo"/"戻して"）** | ❌ 未実装 |
-| **§5 復元（書き戻し）** | ❌ 未実装 |
-| **§6 日曜 21:00 投稿タスク完了チェック** | ❌ 未実装 |
-| **§6 今週分タスクのアーカイブ** | ❌ 未実装 |
-| **§6 来週分企画タスクの昇格（スライド）** | ❌ 未実装 |
-| **§6 翌週 Outlook カレンダー自動配置** | ❌ 未実装 |
-| **§6 次々回話数プロットタスク新規生成** | ❌ 未実装 |
 
 ---
 
 ## 🚨 設計上の重大な矛盾（Phase 3 着手前に修正必須）
 
 ### 問題：バケット構造が spec と一致していない
-
-**現在の実装（planner.ts `ensure_container`）:**
-```
-Plan: PTASK_20260330_1430
-  └── Bucket: "To Do"  ← 1種類のみ
-```
 
 **spec §6 が要求する構造:**
 ```
@@ -68,11 +31,6 @@ Plan: CTASK_20260330_1430
 
 ### 🔴 前提修正（最優先）
 
-| # | タスク | ファイル | 概要 |
-|---|---|---|---|
-| **T-B1** | バケット構造を3構成に変更 | `planner.ts` | `ensure_container` を「今週分/来週分/完了」の3バケット構成に修正。新規タスクは mode に応じて「今週分」か「来週分」に振り分ける |
-| **T-B2** | types.ts に bucket_role 追加 | `types.ts` | `'current' \| 'next' \| 'done'` の bucket_role 型を追加。gen_task に `bucket?: bucket_role` を追加 |
-
 ### 📷 スナップショット・エンジン（§5）
 
 | # | タスク | ファイル | 概要 |
@@ -89,29 +47,9 @@ Plan: CTASK_20260330_1430
 
 ### 📅 日曜 21:00 自動スライド（§6）
 
-| # | タスク | ファイル | 概要 |
-|---|---|---|---|
-| **T-15** | slide.ts — 投稿完了チェック＋アーカイブ | `slide.ts` (新規) | 「投稿」タスクの `percentComplete === 100` を確認。今週分バケットの全タスクを完了バケットへ移動（`bucketId` PATCH） |
-| **T-16** | slide.ts — 来週分企画タスクの昇格 | `slide.ts` | 来週分バケットの PTASK（プロット・ネーム）を取得し、`bucketId` を今週分に変更 + `startDateTime` を翌月曜に更新 |
-| **T-17** | slide.ts — Outlook カレンダー自動配置 | `slide.ts` | 昇格したタスクを spec §3 の週間スケジュール表に従い翌月〜金に Outlook 予定を自動作成（OutlookService 再利用） |
-| **T-18** | slide.ts — 次々回話数プロット生成＋コマンド追加 | `slide.ts` + `package.json` | 空いた来週分バケットに task_flow で次々回話数のプロットタスク4ブロックを生成。`slide:dev` / `slide:prod` コマンド追加 |
-
 ---
 
 ## 依存関係図
-
-```
-T-B2 ──→ T-B1          （型追加してから planner.ts 修正）
-           │
-           ▼
-T-11 ──→ T-12          （snapshot 作成してから graph.ts に統合）
-           │
-           ▼
-T-13 ──→ T-14          （型追加してから sync.ts 拡張）
-           │
-           ▼
-T-15 ──→ T-16 ──→ T-17 ──→ T-18   （slide の順番通り）
-```
 
 前提修正（T-B1/B2）はスライド機能の前提。スナップショット（T-11/12）は Undo の前提。
 
@@ -134,10 +72,6 @@ T-15 ──→ T-16 ──→ T-17 ──→ T-18   （slide の順番通り）
 # 1. 型チェック
 npx tsc --noEmit
 
-# 2. デプロイ（3バケット構成になっているか確認）
-npm run gen:dev -- "第101話の制作"
-# → Planner に「今週分」「来週分」「完了」バケットが3つ生成される
-
 # 3. sync 実行（"ok" で完了 → snapshot が保存されているか確認）
 npm run sync:dev
 # → ~/.gentask/snapshots/ に JSON が生成される
@@ -145,11 +79,6 @@ npm run sync:dev
 # 4. Undo 確認（"undo" と書いて sync 実行）
 npm run sync:dev
 # → snapshot から前の状態に戻る
-
-# 5. スライド実行
-npm run slide:dev
-# → 今週分アーカイブ → 来週分昇格 → Outlook 配置 → 次週プロット生成
-```
 
 ---
 
