@@ -11,12 +11,18 @@
     "slide:dev": "tsx slide.ts dev",
     "slide:prod": "tsx slide.ts prod",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "google:auth-url": "tsx bin/google.ts auth-url",
+    "google:save-token": "tsx bin/google.ts save-token",
+    "google:list-cals": "tsx bin/google.ts list-cals",
+    "google:create-event": "tsx bin/google.ts create-event",
+    "google:create-task": "tsx bin/google.ts create-task"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.27.0",
     "dotenv": "^17.2.3",
     "genkit": "^1.27.0",
+    "googleapis": "^171.4.0",
     "zod": "^4.3.4"
   },
   "devDependencies": {
