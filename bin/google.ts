@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { generateAuthUrl, exchangeCodeAndSave, listCalendars, createCalendarEvent, createTask } from '../src/google/index';
+import { generateAuthUrl, exchangeCodeAndSave, listCalendars, createCalendarEvent, createTask } from '../src/google';
 
 (async function(){
   const [, , cmd, ...args] = process.argv;
