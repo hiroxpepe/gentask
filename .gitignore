@@ -74,3 +74,6 @@ Thumbs.db
 
 # --- Docker (Optional) ---
 .docker/
+
+# --- その他 (Misc) ---
+.turbo/
