@@ -7,26 +7,7 @@
 
 ## Theme 1: Real-Time Intelligence
 
-### IMP-01 — MS Graph Webhook Subscriptions (Real-Time Sync)
-**Current state:** `sync` is a manual command; user must run it explicitly.  
-**Improvement:** Subscribe to MS Graph change notifications for the user's Outlook calendar. When an event is created or modified, automatically trigger the AI sync pipeline without any user action.  
-**Impact:** The core "management that doesn't feel like management" promise becomes fully passive.  
-**Key work:**
-- Implement `POST /subscriptions` to register webhook on `/me/events`
-- Add a lightweight HTTP listener (`express` or Hono) to receive change notifications
-- Debounce rapid-fire events (e.g., user dragging blocks) before triggering AI
-- Handle subscription renewal (subscriptions expire after 4230 minutes)
-
 ---
-
-### IMP-02 — Proactive Deadline Risk Detection
-**Current state:** Gentask records progress but never warns the user.  
-**Improvement:** After every sync, calculate remaining sp vs. available time to Sunday 21:00. If the burn rate predicts a miss, automatically push an Outlook event titled `⚠️ DEADLINE RISK` with a breakdown, and raise the priority of at-risk Planner tasks.  
-**Key work:**
-- Build a `risk_calculator` module: `remaining_sp / available_hours → risk_score`
-- Define thresholds: `≥ 0.9` = critical, `≥ 0.7` = warning
-- Create Outlook event via Graph API when threshold is breached
-- Add unit tests
 
 ---
 
@@ -41,51 +22,15 @@
 
 ---
 
-### IMP-04 — Smart Buffer Auto-Reallocation
-**Current state:** Buffer tasks are consumed manually via the `buffer_consumed` sync action.  
-**Improvement:** When the AI detects that a task has overrun its estimated sp, automatically recalculate remaining buffer and reallocate blocks in the Outlook calendar — pushing or shrinking other slots to absorb the overrun, respecting the Sunday 21:00 hard deadline.  
-**Key work:**
-- Build `rebalance_schedule(overrun_sp: number, context: WeekContext)` in `slide.ts`
-- Implement slot-packing algorithm: fill from latest available slot backwards
-- Update both Planner due dates and Outlook event times
-- Log the rebalanced plan for user review
-
 ---
 
 ## Theme 2: Multi-Series & Collaboration
 
-### IMP-05 — Multi-Series Support
-**Current state:** Gentask is hardcoded to a single series (one set of Planner group IDs).  
-**Improvement:** Support multiple concurrent manga series, each with its own Planner group set, Outlook calendar, and 18sp model configuration. A `--series` flag selects the active series.  
-**Key work:**
-- Replace flat env vars with a `~/.gentask/config.json` that maps series names to group ID sets
-- Add `series` management commands: `gentask series add <name>`, `gentask series list`
-- Update all modules to accept a `SeriesContext` instead of reading global env
-- Implement series-aware snapshot namespacing
-
 ---
-
-### IMP-06 — Multi-User Collaboration (Assistant Artist Support)
-**Current state:** Gentask is single-user.  
-**Improvement:** Allow an assistant artist to be assigned specific tasks (e.g., 3D Modeling, Background Layout). Assigned tasks are deployed to the assistant's Planner and Outlook, and their completions feed back into the main series sync.  
-**Key work:**
-- Add `assignee_id?: string` field to `task_schema`
-- Route task creation to the correct user's Planner via `POST /users/{id}/planner/tasks`
-- Aggregate sync inputs from multiple users' calendars in `build_sync_inputs()`
-- Handle conflict resolution when both users update the same logical task
 
 ---
 
 ## Theme 3: Observability & Analytics
-
-### IMP-07 — Weekly Burndown Chart Generation
-**Current state:** No visual reporting.  
-**Improvement:** After each sync, generate a burndown chart (remaining sp vs. elapsed days) as a PNG file saved to `~/.gentask/reports/{YYYY-WW}.png`. Optionally embed the chart as a card in a designated Planner task for easy access.  
-**Key work:**
-- Add `chartjs-node-canvas` or `vega-lite` dependency for server-side chart rendering
-- Track daily sp snapshots in `~/.gentask/history/{YYYY-WW}.jsonl`
-- Implement `generate_burndown_chart(week_data)` in a new `report.ts` module
-- Add `npm run report:dev` script
 
 ---
 
@@ -124,35 +69,9 @@
 
 ---
 
-### IMP-11 — Dry-Run Mode for All Commands
-**Current state:** `gen`, `sync`, and `slide` execute immediately with no preview.  
-**Improvement:** Add a `--dry-run` flag to all commands. In dry-run mode, show exactly what API calls would be made (PATCH urls + bodies) without executing them. Essential for production safety.  
-**Key work:**
-- Add `dry_run: boolean` option to `GraphService`, `PlannerService`, `PlannerSyncService`, `SlideService`
-- In dry-run mode, print a colored diff of proposed changes instead of making API calls
-- Add `--dry-run` to CLI arg parsing in all entry points
-
 ---
 
-### IMP-12 — Full State Export / Import (Backup & Restore)
-**Current state:** Snapshots cover individual task states, but there is no full-state export.  
-**Improvement:** Add `gentask export` to dump all Planner plans, buckets, tasks, and Outlook events to a single JSON archive. Add `gentask import` to restore from that archive (e.g., after a tenant migration or accidental deletion).  
-**Key work:**
-- Build `backup.ts`: traverse all plans → buckets → tasks → events → write `~/.gentask/backup-{timestamp}.json`
-- Build `restore.ts`: replay the JSON archive via POST/PATCH calls with idempotency checks
-- Handle etag conflicts during restore
-- Add `npm run backup:dev` / `npm run restore:dev` scripts
-
 ---
-
-### IMP-13 — Plugin / Custom Action System
-**Current state:** Sync actions are hardcoded (`complete`, `reschedule`, etc.).  
-**Improvement:** Allow users to register custom sync action handlers via a plugin file at `~/.gentask/plugins.ts`. For example: "if note contains '入稿済み', mark the linked Outlook event as Done and send a LINE message."  
-**Key work:**
-- Define `SyncPlugin` interface: `{ pattern: RegExp; handler: (task, context) => Promise<void> }`
-- Load plugins from `~/.gentask/plugins.ts` at startup via dynamic `import()`
-- Run custom plugins after built-in action processing
-- Document the plugin API with examples
 
 ---
 
@@ -180,15 +99,6 @@
 
 ---
 
-### IMP-16 — Clip Studio Paint Auto-Completion Detection
-**Current state:** Task completion requires manual Outlook notes or sync commands.  
-**Improvement:** Watch a configurable `~/Documents/ClipStudio/` directory for `.clip` file save events. When a file matching a task title pattern is saved, automatically mark the corresponding Planner task as complete and update Outlook.  
-**Key work:**
-- Add `chokidar` for cross-platform file watching
-- Build `studio_watcher.ts`: map filename patterns → task titles (configurable in `~/.gentask/config.json`)
-- Run as a background daemon: `npm run studio:watch`
-- Debounce rapid saves (only trigger after 5s of inactivity)
-
 ---
 
 ## Theme 6: Infrastructure
@@ -203,15 +113,6 @@
 - Add a badge to README.md
 
 ---
-
-### IMP-18 — Docker Container + One-Command Setup
-**Current state:** Setup requires installing Node, Azure CLI, and configuring env manually.  
-**Improvement:** Provide a `Dockerfile` and `docker-compose.yml` that pre-installs all dependencies. Users only need to mount their `.env.dev` file and run `docker compose run gentask gen:dev -- "Episode N"`.  
-**Key work:**
-- Write multi-stage `Dockerfile` (build stage + runtime stage with Azure CLI)
-- Write `docker-compose.yml` with volume mounts for `.env.*` and `~/.gentask/`
-- Add `DOCKER_SETUP.md` with step-by-step instructions
-- Test on macOS and Linux
 
 ---
 
