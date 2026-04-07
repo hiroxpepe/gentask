@@ -5,7 +5,7 @@
 
 * **AIモデル:** Google Vertex AI (`gemini-2.0-flash`)
 * **AIフレームワーク:** Genkit (Node.js / TypeScript)
-* **タスク/スケジュール基盤:** Microsoft 365 Planner + Outlook (Microsoft Graph) および Google Tasks + Google Calendar (Google APIs) をサポート
+* **タスク/スケジュール基盤:** 主要に Microsoft 365 Planner + Outlook (Microsoft Graph) をサポート。Google Tasks + Google Calendar は補助的／実験的なフローとして実装済み。
 * **インフラ管理:** Google Cloud CLI (gcloud)（Googleフロー）および Azure CLI (az)（Microsoft フロー）
 
 ## 2. 環境分離とサンドボックス設計（Dev / Prod）
@@ -24,7 +24,7 @@ graph LR
     B -->|PROJECT_ENV=DEV| C[代表グループID<br/>サンドボックス]
     B -->|PROJECT_ENV=PROD| D[企画T グループID<br/>本番用バケット]
     
-    C --> E[Google Tasks API]
+    C --> E[Task backend API (Microsoft Planner / Google Tasks)]
     D --> E
     
     style C fill:#fff3e0,stroke:#ff9800
@@ -36,3 +36,5 @@ graph LR
 * **サービスアカウントの独立:** `gentask-api-user` を Dev/Prod 双方で個別に作成し、`roles/aiplatform.user` 権限を付与。
 * **APIキーの厳格管理:** CLI経由で生成した Vertex AI API キー（UIDベース）を `.env.dev` および `.env.prod` に隔離して管理。
 * **OAuthユーザートークン:** Tasks/Calendarへの書き込みは、ユーザー自身の権限をOAuthラッパー経由で取得し実行。
+
+> NOTE: 現状のリポジトリは Microsoft Planner を主要バックエンドとして想定しており、bin/index.ts や src/planner.ts / src/container_manager.ts は Microsoft Graph (Planner/Outlook) に依存します。Google のフローは lib/google.ts と bin/google.ts で利用可能ですが、ランタイムでの完全なマルチバックエンド選択は実装されていません。

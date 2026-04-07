@@ -37,7 +37,7 @@ gentask/
 
 ## 2. MVP（Minimum Viable Product）開発フェーズ
 
-Google Tasks と Calendar の双方向同期を実現するプロトタイプの開発計画です。
+タスクバックエンド（主に Microsoft Planner）とカレンダー（Outlook / Google Calendar）の双方向同期を実現するプロトタイプの開発計画です。Google のフローは補助的／実験的に扱います。
 
 ```mermaid
 graph TD
@@ -57,12 +57,12 @@ graph TD
 ### 各フェーズの詳細
 
 * **Phase 0 (準備):** GCPプロジェクトのOAuthクライアント設定、Tasks/Calendar API有効化。
-* **Phase 1 (MVP実装):** `lib/` へのAPIラッパー実装。CLIエントリは `bin/` に配置し、`npm run gen:dev` / `npm run gen:prod`（`bin/index.ts`）でタスク生成とデプロイ、`npm run sync:dev` / `npm run sync:prod`（`bin/sync.ts`）で同期を実行します。Google 固有のフローは `npm run google:auth-url` 等の `google:*` スクリプト（`bin/google.ts`）を使用します。ID保存による双方向リンク機構の構築。
+* **Phase 1 (MVP実装):** `lib/` へのAPIラッパー実装。CLIエントリは `bin/` に配置し、`npm run gen:dev` / `npm run gen:prod`（`bin/index.ts`）でタスク生成とデプロイ、`npm run sync:dev` / `npm run sync:prod`（`bin/sync.ts`）で同期を実行します。初期 MVP は Microsoft Planner + Outlook を主要ターゲットとし、Google 固有のフローは `npm run google:auth-url` 等の `google:*` スクリプト（`bin/google.ts`）として補助的に扱います。ID保存による双方向リンク機構の構築。
 * **Phase 2 (ルール実装):** カレンダー側の変更（本文に「ok」等）を解析し、Google Tasks側を完了状態にする簡易ルールの実装。
 * **Phase 4 (テスト・検証):** 以下の検証基準を満たすか確認。
 
 ### 検証基準 (Success Criteria)
 
-1.  `npm run gen:dev -- "タイトル"` 実行で、Tasks と Calendar の両方にアイテムが作成されること。
-2.  カレンダーのイベント本文に「ok」を追記後、`npm run sync:dev` を実行すると該当の Task が完了(Completed)になること。
+1.  `npm run gen:dev -- "タイトル"` 実行で、タスクバックエンド（デフォルト: Microsoft Planner）とカレンダー（Outlook または Google Calendar）にアイテムが作成されること。
+2.  カレンダーのイベント本文に「ok」を追記後、`npm run sync:dev` を実行すると該当のタスクが完了(Completed)になること（タスクバックエンド側で反映される）。
 3.  上記サイクルを3回繰り返し、状態の不整合が起きないこと。
