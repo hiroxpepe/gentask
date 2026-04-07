@@ -1,31 +1,55 @@
+/**
+ * @file bin/slide.test.ts
+ * @description slide.ts の単体テスト。
+ * googleapis と genkit をモックして、各関数の動作を検証する。
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Hoisted mocks for functions that are used across different mocks or tests
-const { mock_create_event, mock_generate } = vi.hoisted(() => ({
-    mock_create_event: vi.fn().mockResolvedValue('outlook-event-mock'),
+// ─── vi.hoisted でモック関数を宣言 ───────────────────────────────────────────
+
+const {
+    mock_tasks_list,
+    mock_tasks_insert,
+    mock_tasks_delete,
+    mock_tasks_update,
+    mock_cal_insert,
+    mock_generate,
+} = vi.hoisted(() => ({
+    mock_tasks_list:   vi.fn(),
+    mock_tasks_insert: vi.fn(),
+    mock_tasks_delete: vi.fn(),
+    mock_tasks_update: vi.fn(),
+    mock_cal_insert:   vi.fn(),
     mock_generate:     vi.fn(),
 }));
 
-vi.mock('../lib/graph', () => ({
-    graph: {
-        post:  vi.fn(),
-        get:   vi.fn(),
-        patch: vi.fn(),
+// ─── モック設定 ───────────────────────────────────────────────────────────────
+
+vi.mock('googleapis', () => ({
+    google: {
+        auth:  { OAuth2: class { setCredentials() {} } },
+        tasks: vi.fn(() => ({
+            tasks: {
+                list:   mock_tasks_list,
+                insert: mock_tasks_insert,
+                delete: mock_tasks_delete,
+                update: mock_tasks_update,
+            },
+        })),
+        calendar: vi.fn(() => ({
+            events: { insert: mock_cal_insert },
+        })),
     },
 }));
 
-vi.mock('../lib/outlook', () => ({
-    OutlookService: class {
-        create_event = mock_create_event;
-    },
-}));
+vi.mock('../src/google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
 
-// genkit mock now uses the hoisted mock_generate
 vi.mock('genkit', async () => {
     const zod = await import('zod');
     return {
         genkit: vi.fn(() => ({
-            defineFlow: vi.fn((_def, fn) => fn),
+            defineFlow: vi.fn((_def: unknown, fn: unknown) => fn),
             generate:   mock_generate,
         })),
         z: zod.z,
@@ -37,37 +61,44 @@ vi.mock('@genkit-ai/googleai', () => ({
     gemini20Flash: 'gemini-2.0-flash',
 }));
 
-import { graph } from '../lib/graph';
-// OutlookService is imported to ensure mocks are loaded, but not used directly
-import { OutlookService } from '../lib/outlook';
+// ─── テスト対象 ───────────────────────────────────────────────────────────────
+
 import {
     get_next_monday,
     get_weekday_date,
     archive_current_week,
     promote_next_week,
-    get_latest_plan,
     schedule_promoted_tasks,
     generate_next_plot,
-    type PlannerTask,
+    type GoogleTaskItem,
 } from './slide';
 
-const mock_get   = graph.get   as ReturnType<typeof vi.fn>;
-const mock_patch = graph.patch as ReturnType<typeof vi.fn>;
-const mock_post  = graph.post  as ReturnType<typeof vi.fn>;
+/**
+ * GoogleTaskItem のファクトリ関数。テスト用にデフォルト値付きで生成する。
+ */
+function make_task(
+    id: string,
+    title: string,
+    listId: string,
+    status: 'needsAction' | 'completed' = 'needsAction'
+): GoogleTaskItem {
+    return { id, title, listId, status };
+}
 
-
-// ─── 純粋関数テスト ─────────────────────────────────────────────────────────
+// ─── get_next_monday テスト ───────────────────────────────────────────────────
 
 describe('get_next_monday', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('月曜日に実行すると翌週の月曜日を返す', () => {
         // 2026-03-30 は月曜日
         vi.setSystemTime(new Date('2026-03-30T10:00:00Z'));
         const result = get_next_monday();
-        // 翌月曜 = 2026-04-06
         expect(result.getDay()).toBe(1); // 月曜
         expect(result.getDate()).toBe(6);
         expect(result.getMonth()).toBe(3); // 4月 (0-indexed)
-        vi.useRealTimers();
     });
 
     it('日曜日に実行すると翌日（月曜）を返す', () => {
@@ -75,7 +106,6 @@ describe('get_next_monday', () => {
         vi.setSystemTime(new Date('2026-04-05T10:00:00Z'));
         const result = get_next_monday();
         expect(result.getDay()).toBe(1); // 月曜
-        vi.useRealTimers();
     });
 
     it('金曜日に実行すると翌週月曜を返す', () => {
@@ -83,9 +113,10 @@ describe('get_next_monday', () => {
         vi.setSystemTime(new Date('2026-04-03T10:00:00Z'));
         const result = get_next_monday();
         expect(result.getDay()).toBe(1);
-        vi.useRealTimers();
     });
 });
+
+// ─── get_weekday_date テスト ─────────────────────────────────────────────────
 
 describe('get_weekday_date', () => {
     it('月曜(base) + 3日 = 水曜', () => {
@@ -108,63 +139,67 @@ describe('archive_current_week', () => {
         vi.clearAllMocks();
     });
 
-    function make_task(id: string, title: string, percent: number, bucket_id = 'bucket-current'): PlannerTask {
-        return {
-            id,
-            title,
-            bucketId: bucket_id,
-            percentComplete: percent,
-            '@odata.etag': `W/"etag-${id}"`,
-        };
-    }
+    const CONTAINER = { current: 'list-current', next: 'list-next', done: 'list-done' };
 
-    it('投稿タスクが完了 (100%) なら true を返してアーカイブする', async () => {
+    it('CTASK: 投稿タスクが完了済みなら true を返して全タスクを移動する', async () => {
         const tasks = [
-            make_task('t1', '3D制作', 100),
-            make_task('t2', '投稿', 100),
+            make_task('t1', 'エディット作業', 'list-current'),
+            make_task('t2', '投稿', 'list-current', 'completed'),
         ];
-        mock_get.mockResolvedValue({ value: tasks });
-        mock_patch.mockResolvedValue({});
+        mock_tasks_list.mockResolvedValue({ data: { items: tasks.map(t => ({
+            id: t.id, title: t.title, status: t.status,
+        })) } });
+        mock_tasks_insert.mockResolvedValue({ data: { id: 'new-id', title: 'dummy', status: 'needsAction' } });
+        mock_tasks_delete.mockResolvedValue({});
 
-        const buckets = new Map([['今週分', 'bucket-current'], ['完了', 'bucket-done']]);
-        const result = await archive_current_week('plan-001', buckets);
+        const result = await archive_current_week(CONTAINER, {}, 'CTASK');
 
         expect(result).toBe(true);
-        // 2タスク分 PATCH（移動）
-        expect(mock_patch).toHaveBeenCalledTimes(2);
-        // 全て完了バケットへ移動
-        for (const call of mock_patch.mock.calls) {
-            expect((call[1] as { bucketId: string }).bucketId).toBe('bucket-done');
-        }
+        expect(mock_tasks_insert).toHaveBeenCalledTimes(2);
+        expect(mock_tasks_delete).toHaveBeenCalledTimes(2);
     });
 
-    it('投稿タスクが未完了なら false を返して PATCH しない', async () => {
+    it('CTASK: 投稿タスクが未完了なら false を返して移動しない', async () => {
         const tasks = [
-            make_task('t1', 'エディット', 100),
-            make_task('t2', '投稿', 50),
+            make_task('t1', 'エディット作業', 'list-current'),
+            make_task('t2', '投稿', 'list-current', 'needsAction'),
         ];
-        mock_get.mockResolvedValue({ value: tasks });
+        mock_tasks_list.mockResolvedValue({ data: { items: tasks.map(t => ({
+            id: t.id, title: t.title, status: t.status,
+        })) } });
 
-        const buckets = new Map([['今週分', 'bucket-current'], ['完了', 'bucket-done']]);
-        const result = await archive_current_week('plan-001', buckets);
+        const result = await archive_current_week(CONTAINER, {}, 'CTASK');
 
         expect(result).toBe(false);
-        expect(mock_patch).not.toHaveBeenCalled();
+        expect(mock_tasks_insert).not.toHaveBeenCalled();
     });
 
-    it('投稿タスクが見つからない場合は false を返す', async () => {
-        mock_get.mockResolvedValue({ value: [make_task('t1', 'エディット', 100)] });
+    it('CTASK: 投稿タスクが存在しない場合は false を返す', async () => {
+        mock_tasks_list.mockResolvedValue({ data: { items: [
+            { id: 't1', title: 'エディット', status: 'needsAction' },
+        ] } });
 
-        const buckets = new Map([['今週分', 'bucket-current'], ['完了', 'bucket-done']]);
-        const result = await archive_current_week('plan-001', buckets);
-
+        const result = await archive_current_week(CONTAINER, {}, 'CTASK');
         expect(result).toBe(false);
     });
 
-    it('バケットが見つからない場合は false を返す', async () => {
-        const buckets = new Map<string, string>(); // 空
-        const result = await archive_current_week('plan-001', buckets);
-        expect(result).toBe(false);
+    it('PTASK（非CTASK）: 投稿タスクがなくてもアーカイブが進み true を返す', async () => {
+        mock_tasks_list.mockResolvedValue({ data: { items: [
+            { id: 't1', title: 'プロット作成', status: 'needsAction' },
+        ] } });
+        mock_tasks_insert.mockResolvedValue({ data: { id: 'new-id', title: 'dummy', status: 'needsAction' } });
+        mock_tasks_delete.mockResolvedValue({});
+
+        const result = await archive_current_week(CONTAINER, {}, 'PTASK');
+        expect(result).toBe(true);
+        expect(mock_tasks_insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('タスクが0件の場合は true を返す（CTASK のチェック対象なし）', async () => {
+        mock_tasks_list.mockResolvedValue({ data: { items: [] } });
+
+        const result = await archive_current_week(CONTAINER, {}, 'PTASK');
+        expect(result).toBe(true);
     });
 });
 
@@ -180,205 +215,133 @@ describe('promote_next_week', () => {
         vi.useRealTimers();
     });
 
-    function make_task(id: string, title: string): PlannerTask {
-        return {
-            id,
-            title,
-            bucketId: 'bucket-next',
-            percentComplete: 0,
-            '@odata.etag': `W/"etag-${id}"`,
-        };
-    }
+    const CONTAINER = { current: 'list-current', next: 'list-next', done: 'list-done' };
 
-    it('来週分のタスクを今週分バケットに移動する', async () => {
-        const tasks = [make_task('t1', 'プロット第42話'), make_task('t2', 'ラフネーム')];
-        mock_get
-            .mockResolvedValueOnce({ value: tasks })  // get_tasks_in_bucket
-            .mockResolvedValueOnce({ ...tasks[0], '@odata.etag': 'W/"fresh-1"' }) // fresh t1
-            .mockResolvedValueOnce({ ...tasks[1], '@odata.etag': 'W/"fresh-2"' }); // fresh t2
-        mock_patch.mockResolvedValue({});
+    it('来週分にタスクあり → 移動して昇格タスク一覧を返す', async () => {
+        const tasks = [
+            { id: 't1', title: 'プロット第42話', status: 'needsAction' },
+            { id: 't2', title: 'ラフネーム', status: 'needsAction' },
+        ];
+        mock_tasks_list.mockResolvedValue({ data: { items: tasks } });
+        mock_tasks_insert
+            .mockResolvedValueOnce({ data: { id: 'new-t1', title: 'プロット第42話', status: 'needsAction' } })
+            .mockResolvedValueOnce({ data: { id: 'new-t2', title: 'ラフネーム', status: 'needsAction' } });
+        mock_tasks_delete.mockResolvedValue({});
 
-        const buckets = new Map([['来週分', 'bucket-next'], ['今週分', 'bucket-current']]);
-        const promoted = await promote_next_week('plan-001', buckets);
+        const promoted = await promote_next_week(CONTAINER, {});
 
         expect(promoted).toHaveLength(2);
-
-        // PATCH で bucketId が今週分に変わっていること
-        for (const call of mock_patch.mock.calls) {
-            expect((call[1] as { bucketId: string }).bucketId).toBe('bucket-current');
-        }
+        expect(mock_tasks_delete).toHaveBeenCalledTimes(2);
     });
 
-    it('来週分バケットが空なら空配列を返す', async () => {
-        mock_get.mockResolvedValueOnce({ value: [] });
+    it('来週分が空の場合は空配列を返す', async () => {
+        mock_tasks_list.mockResolvedValue({ data: { items: [] } });
 
-        const buckets = new Map([['来週分', 'bucket-next'], ['今週分', 'bucket-current']]);
-        const promoted = await promote_next_week('plan-001', buckets);
-
+        const promoted = await promote_next_week(CONTAINER, {});
         expect(promoted).toHaveLength(0);
-        expect(mock_patch).not.toHaveBeenCalled();
+        expect(mock_tasks_insert).not.toHaveBeenCalled();
     });
 
-    it('バケットが見つからない場合は空配列を返す', async () => {
-        const buckets = new Map<string, string>();
-        const promoted = await promote_next_week('plan-001', buckets);
-        expect(promoted).toHaveLength(0);
+    it('昇格されたタスクの due が翌月曜に設定される', async () => {
+        const tasks = [{ id: 't1', title: 'タスク', status: 'needsAction' }];
+        mock_tasks_list.mockResolvedValue({ data: { items: tasks } });
+        mock_tasks_insert.mockResolvedValue({ data: { id: 'new-t1', title: 'タスク', status: 'needsAction' } });
+        mock_tasks_delete.mockResolvedValue({});
+
+        await promote_next_week(CONTAINER, {});
+
+        const insert_call = mock_tasks_insert.mock.calls[0][0] as any;
+        const due_date = new Date(insert_call.requestBody.due);
+        // 2026-03-30 月曜 → 翌月曜 = 2026-04-06
+        expect(due_date.getDay()).toBe(1);
+        expect(due_date.getDate()).toBe(6);
     });
 });
 
-// ─── get_latest_plan テスト ──────────────────────────────────────────────────
-describe('get_latest_plan', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
+// ─── schedule_promoted_tasks テスト ─────────────────────────────────────────
 
-    it('複数のプランが存在する場合、createdDateTime が最新のものを返す', async () => {
-        const plans = {
-            value: [
-                { id: 'plan-1', title: 'Old Plan', createdDateTime: '2026-03-01T10:00:00Z' },
-                { id: 'plan-2', title: 'New Plan', createdDateTime: '2026-04-01T10:00:00Z' },
-                { id: 'plan-3', title: 'Mid Plan', createdDateTime: '2026-03-15T10:00:00Z' },
-            ]
-        };
-        mock_get.mockResolvedValue(plans);
-
-        const result = await get_latest_plan('group-001');
-
-        expect(result).not.toBeNull();
-        expect(result?.id).toBe('plan-2');
-        expect(result?.title).toBe('New Plan');
-        expect(mock_get).toHaveBeenCalledWith('https://graph.microsoft.com/v1.0/groups/group-001/planner/plans');
-    });
-
-    it('プランが存在しない場合、null を返す', async () => {
-        mock_get.mockResolvedValue({ value: [] });
-
-        const result = await get_latest_plan('group-001');
-
-        expect(result).toBeNull();
-    });
-
-    it('API が value を返さない場合、null を返す', async () => {
-        mock_get.mockResolvedValue({}); // No 'value' property
-
-        const result = await get_latest_plan('group-001');
-
-        expect(result).toBeNull();
-    });
-});
-
-// ─── schedule_promoted_tasks テスト ──────────────────────────────────────────
 describe('schedule_promoted_tasks', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // 2026-03-30 (月) 10:00 JST
+        // 2026-03-30 (月) 10:00 JST (01:00 UTC)
         vi.setSystemTime(new Date('2026-03-30T01:00:00Z'));
+        process.env.GOOGLE_CALENDAR_ID = 'cal-001';
     });
 
     afterEach(() => {
         vi.useRealTimers();
     });
 
-    function make_task(id: string, title: string): PlannerTask {
-        return {
-            id, title,
-            bucketId: 'bucket-current',
-            percentComplete: 0,
-            '@odata.etag': `W/"etag-${id}"`,
-        };
-    }
+    it('「プロット」を含むタスク → 水・木の 2 イベントが作成される', async () => {
+        mock_cal_insert.mockResolvedValue({ data: { id: 'event-1' } });
+        mock_tasks_update.mockResolvedValue({ data: {} });
 
-    it('マトリクス対象タスク（プロット）を指定日時に配置する', async () => {
-        const tasks = [make_task('t1', '第42話のプロット作成')];
-        await schedule_promoted_tasks(tasks);
+        const tasks = [make_task('t1', '第42話のプロット作成', 'list-c')];
+        await schedule_promoted_tasks(tasks, {});
 
-        expect(mock_create_event).toHaveBeenCalledTimes(2); // 水, 木 の2回
-
-        const calls = mock_create_event.mock.calls;
-
-        // 1回目: 水曜 14:00 (JST) = 05:00 (UTC)
-        const wed_start = new Date(calls[0][2]);
-        expect(wed_start.getUTCDay()).toBe(3); // Wednesday
-        expect(wed_start.getUTCHours()).toBe(5);
-        const wed_end = new Date(calls[0][3]);
-        expect(wed_end.getTime() - wed_start.getTime()).toBe(60 * 60 * 1000); // 2 blocks = 1 hour
-
-        // 2回目: 木曜 14:00 (JST) = 05:00 (UTC)
-        const thu_start = new Date(calls[1][2]);
-        expect(thu_start.getUTCDay()).toBe(4); // Thursday
-        expect(thu_start.getUTCHours()).toBe(5);
+        expect(mock_cal_insert).toHaveBeenCalledTimes(2); // 水, 木
     });
 
-    it('マトリクス対象外タスクを月曜9時から順次配置する', async () => {
+    it('マトリクス対象外タスク → 月曜 09:00 から順次配置', async () => {
+        mock_cal_insert
+            .mockResolvedValueOnce({ data: { id: 'event-1' } })
+            .mockResolvedValueOnce({ data: { id: 'event-2' } });
+        mock_tasks_update.mockResolvedValue({ data: {} });
+
         const tasks = [
-            make_task('t1', '背景資料集め'),
-            make_task('t2', 'キャラクターデザイン'),
+            make_task('t1', '背景資料集め', 'list-c'),
+            make_task('t2', 'キャラクターデザイン', 'list-c'),
         ];
-        await schedule_promoted_tasks(tasks);
+        await schedule_promoted_tasks(tasks, {});
 
-        expect(mock_create_event).toHaveBeenCalledTimes(2);
-        const calls = mock_create_event.mock.calls;
-
-        // 1回目: 翌月曜 09:00 (JST) = 00:00 (UTC)
-        const mon_start1 = new Date(calls[0][2]);
-        expect(mon_start1.getUTCDay()).toBe(1); // Monday
-        expect(mon_start1.getUTCHours()).toBe(0);
-        const mon_end1 = new Date(calls[0][3]);
-        expect(mon_end1.getTime() - mon_start1.getTime()).toBe(30 * 60 * 1000); // 30 min
-
-        // 2回目: 1回目の終了時刻 = 月曜 09:30 (JST)
-        const mon_start2 = new Date(calls[1][2]);
-        expect(mon_start2.getTime()).toBe(mon_end1.getTime());
+        expect(mock_cal_insert).toHaveBeenCalledTimes(2);
+        const first_call = mock_cal_insert.mock.calls[0][0] as any;
+        const second_call = mock_cal_insert.mock.calls[1][0] as any;
+        const start1 = new Date(first_call.requestBody.start.dateTime);
+        const end1   = new Date(first_call.requestBody.end.dateTime);
+        const start2 = new Date(second_call.requestBody.start.dateTime);
+        // 2回目は1回目の終了と同じ時刻から始まる
+        expect(start2.getTime()).toBe(end1.getTime());
+        // 月曜 09:00 JST = 00:00 UTC
+        expect(start1.getUTCDay()).toBe(1); // 月曜
+        expect(start1.getUTCHours()).toBe(0);
     });
 
-    it('タスクが空の場合は何も実行しない', async () => {
-        await schedule_promoted_tasks([]);
-        expect(mock_create_event).not.toHaveBeenCalled();
+    it('タスクが空の場合はカレンダー API が呼ばれない', async () => {
+        await schedule_promoted_tasks([], {});
+        expect(mock_cal_insert).not.toHaveBeenCalled();
     });
 });
 
 // ─── generate_next_plot テスト ───────────────────────────────────────────────
+
 describe('generate_next_plot', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        process.env.M365_USER_ID = 'user-001';
     });
 
-    it('AI が生成したタスクを来週分バケットに投稿する', async () => {
+    const CONTAINER = { current: 'list-current', next: 'list-next', done: 'list-done' };
+
+    it('AI がタスク生成 → tasks.insert が呼ばれる', async () => {
         const ai_tasks = [
-            { title: 'プロット案出し', priority: 3, description: '', label: 'Pink' },
-            { title: '構成検討', priority: 5, description: '', label: 'Pink' },
+            { title: 'プロット案出し', priority: 3, description: 'desc', label: 'Pink', mode: 'PTASK' },
+            { title: '構成検討', priority: 5, description: 'desc', label: 'Pink', mode: 'PTASK' },
         ];
         mock_generate.mockResolvedValue({ output: ai_tasks });
-        mock_post.mockResolvedValue({ id: 'new-task' });
+        mock_tasks_insert.mockResolvedValue({ data: { id: 'new-task' } });
 
-        const buckets = new Map([['来週分', 'bucket-next']]);
-        await generate_next_plot('plan-001', buckets, '第43話');
+        await generate_next_plot(CONTAINER, '第43話', {});
 
         expect(mock_generate).toHaveBeenCalledOnce();
         expect(mock_generate.mock.calls[0][0].prompt).toContain('第43話');
-
-        expect(mock_post).toHaveBeenCalledTimes(2);
-        const calls = mock_post.mock.calls;
-        expect(calls[0][0]).toBe('https://graph.microsoft.com/v1.0/planner/tasks');
-        expect(calls[0][1].planId).toBe('plan-001');
-        expect(calls[0][1].bucketId).toBe('bucket-next');
-        expect(calls[0][1].title).toBe('プロット案出し');
+        expect(mock_tasks_insert).toHaveBeenCalledTimes(2);
+        expect(mock_tasks_insert.mock.calls[0][0].tasklist).toBe('list-next');
     });
 
-    it('AI がタスクを生成しない場合は投稿しない', async () => {
+    it('AI が null 返却 → tasks.insert が呼ばれない', async () => {
         mock_generate.mockResolvedValue({ output: null });
-        const buckets = new Map([['来週分', 'bucket-next']]);
-        await generate_next_plot('plan-001', buckets, '第43話');
 
-        expect(mock_post).not.toHaveBeenCalled();
-    });
-
-    it('来週分バケットがない場合は実行しない', async () => {
-        const buckets = new Map();
-        await generate_next_plot('plan-001', buckets, '第43話');
-
-        expect(mock_generate).not.toHaveBeenCalled();
-        expect(mock_post).not.toHaveBeenCalled();
+        await generate_next_plot(CONTAINER, '第43話', {});
+        expect(mock_tasks_insert).not.toHaveBeenCalled();
     });
 });

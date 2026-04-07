@@ -2,7 +2,9 @@ import { genkit, z } from 'genkit';
 import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { PlannerService } from '../src/planner';
+import { google } from 'googleapis';
+import { createOAuthClient } from '../src/google';
+import { GoogleContainerManager } from '../src/google-container-manager';
 import { task_schema, type gen_task } from '../lib/types';
 import { validate_env } from '../lib/env';
 
@@ -56,9 +58,65 @@ if (is_main) {
         // 1. AI によるタスクの構造化生成
         const generated_tasks = await task_flow(input_subject);
 
-        // 2. Planner サービスを使用して M365 へ展開
-        const service_instance = new PlannerService();
-        await service_instance.execute_deployment(generated_tasks);
+        // 2. Google Tasks + Calendar へ展開
+        const auth            = createOAuthClient();
+        const manager         = new GoogleContainerManager();
+        const tasks_client    = google.tasks({ version: 'v1', auth });
+        const cal_client      = google.calendar({ version: 'v3', auth });
+        const calendar_id     = process.env.GOOGLE_CALENDAR_ID!;
+
+        for (const task of generated_tasks) {
+            const bucket: 'current' | 'next' =
+                (task.bucket as 'current' | 'next' | undefined) ??
+                (task.mode === 'PTASK' ? 'next' : 'current');
+
+            const container = await manager.get_container(task.mode, auth);
+            const list_id   = container[bucket];
+
+            // Google Tasks にタスク作成
+            const task_res = await tasks_client.tasks.insert({
+                tasklist: list_id,
+                requestBody: {
+                    title: task.title,
+                    notes: task.description,
+                },
+            });
+            const task_id = task_res.data.id!;
+
+            // Google Calendar にイベント作成（30分後開始・60分後終了）
+            const start_dt = new Date(Date.now() + 30 * 60_000);
+            const end_dt   = new Date(Date.now() + 60 * 60_000);
+
+            const event_res = await cal_client.events.insert({
+                calendarId: calendar_id,
+                requestBody: {
+                    summary:     `[${task.mode}] ${task.title}`,
+                    description: task.description,
+                    start: { dateTime: start_dt.toISOString() },
+                    end:   { dateTime: end_dt.toISOString() },
+                    extendedProperties: {
+                        private: {
+                            gentask_taskId: task_id,
+                            gentask_listId: list_id,
+                        },
+                    },
+                },
+            });
+            const event_id = event_res.data.id!;
+
+            // タスクの notes に双方向リンクを追記
+            await tasks_client.tasks.update({
+                tasklist: list_id,
+                task:     task_id,
+                requestBody: {
+                    id:    task_id,
+                    title: task.title,
+                    notes: `${task.description}\n[gentask:{"eventId":"${event_id}","calendarId":"${calendar_id}","listId":"${list_id}"}]`,
+                },
+            });
+
+            console.log(`  ✅ ${task.mode} | ${task.title}`);
+        }
 
         console.log(`\n✨ Successfully deployed ${generated_tasks.length} tasks.`);
     } catch (error) {

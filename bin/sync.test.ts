@@ -1,6 +1,21 @@
+/**
+ * @file bin/sync.test.ts
+ * @description GoogleSyncService の単体テスト。
+ * googleapis と snapshot をモックして、各アクションの動作を検証する。
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// genkit と googleAI のモック（sync_flow の定義時に実行されるため必要）
+// ─── vi.hoisted でモック関数を宣言 ───────────────────────────────────────────
+
+const { mock_tasks_get, mock_tasks_update, mock_restore } = vi.hoisted(() => ({
+    mock_tasks_get:    vi.fn(),
+    mock_tasks_update: vi.fn(),
+    mock_restore:      vi.fn(),
+}));
+
+// ─── モック設定 ───────────────────────────────────────────────────────────────
+
 vi.mock('genkit', async () => {
     const zod = await import('zod');
     return {
@@ -11,131 +26,140 @@ vi.mock('genkit', async () => {
         z: zod.z,
     };
 });
+
 vi.mock('@genkit-ai/googleai', () => ({
     googleAI:      vi.fn(() => ({})),
     gemini20Flash: 'gemini-2.0-flash',
 }));
 
-vi.mock('../lib/graph');
-vi.mock('../lib/snapshot');
+vi.mock('googleapis', () => ({
+    google: {
+        auth:  { OAuth2: class { setCredentials() {} } },
+        tasks: vi.fn(() => ({
+            tasks: {
+                get:    mock_tasks_get,
+                update: mock_tasks_update,
+            },
+        })),
+    },
+}));
 
-import { graph } from '../lib/graph';
-import { snapshot } from '../lib/snapshot';
-import { PlannerSyncService } from './sync';
+vi.mock('../src/google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
+vi.mock('../lib/snapshot', () => ({ snapshot: { restore: mock_restore } }));
 
-const mock_get   = vi.mocked(graph.get);
-const mock_patch = vi.mocked(graph.patch);
-const mock_restore = vi.mocked(snapshot.restore);
+// ─── テスト対象 ───────────────────────────────────────────────────────────────
 
-describe('PlannerSyncService.apply_actions', () => {
+import { GoogleSyncService } from './sync';
+
+describe('GoogleSyncService.apply_actions', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('no_change はスキップされ API が呼ばれない', async () => {
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-001', action: 'no_change' }]);
-        expect(mock_get).not.toHaveBeenCalled();
-        expect(mock_patch).not.toHaveBeenCalled();
-    });
-
-    it('complete は percentComplete: 100 で PATCH する', async () => {
-        mock_get.mockResolvedValueOnce({ '@odata.etag': 'W/"etag-1"' });
-        mock_patch.mockResolvedValueOnce({});
-
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-001', action: 'complete' }]);
-
-        expect(mock_get).toHaveBeenCalledWith(expect.stringContaining('task-001'));
-        expect(mock_patch).toHaveBeenCalledWith(
-            expect.stringContaining('task-001'),
-            { percentComplete: 100 },
-            { 'If-Match': 'W/"etag-1"' }
+    it('no_change はスキップされ update が呼ばれない', async () => {
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-001', action: 'no_change' }],
+            new Map([['task-001', 'list-001']])
         );
+        expect(mock_tasks_update).not.toHaveBeenCalled();
     });
 
-    it('reschedule は dueDateTime を PATCH する', async () => {
-        mock_get.mockResolvedValueOnce({ '@odata.etag': 'W/"etag-2"' });
-        mock_patch.mockResolvedValueOnce({});
-
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{
-            plannerTaskId: 'task-002',
-            action: 'reschedule',
-            newDueDate: '2026-04-10T00:00:00Z',
-        }]);
-
-        expect(mock_patch).toHaveBeenCalledWith(
-            expect.stringContaining('task-002'),
-            { dueDateTime: '2026-04-10T00:00:00Z' },
-            { 'If-Match': 'W/"etag-2"' }
+    it('list_map に存在しない taskId はスキップされ update が呼ばれない', async () => {
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'unknown-task', action: 'complete' }],
+            new Map()
         );
+        expect(mock_tasks_update).not.toHaveBeenCalled();
     });
 
-    it('reschedule で newDueDate がない場合は PATCH しない', async () => {
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-003', action: 'reschedule' }]);
-        expect(mock_patch).not.toHaveBeenCalled();
+    it('complete は status: completed で update する', async () => {
+        mock_tasks_update.mockResolvedValueOnce({ data: {} });
+
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-001', action: 'complete' }],
+            new Map([['task-001', 'list-001']])
+        );
+
+        expect(mock_tasks_update).toHaveBeenCalledWith(expect.objectContaining({
+            tasklist:    'list-001',
+            task:        'task-001',
+            requestBody: expect.objectContaining({ status: 'completed' }),
+        }));
     });
 
-    it('add_note は description に追記する', async () => {
-        mock_get.mockResolvedValueOnce({
-            '@odata.etag': 'W/"etag-3"',
-            description: '既存メモ',
-        });
-        mock_patch.mockResolvedValueOnce({});
+    it('reschedule は newDueDate で update する', async () => {
+        mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-004', action: 'add_note', note: '新しいメモ' }]);
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-002', action: 'reschedule', newDueDate: '2026-04-10T00:00:00Z' }],
+            new Map([['task-002', 'list-002']])
+        );
 
-        const patch_body = mock_patch.mock.calls[0][1] as { description: string };
-        expect(patch_body.description).toContain('既存メモ');
-        expect(patch_body.description).toContain('新しいメモ');
+        expect(mock_tasks_update).toHaveBeenCalledWith(expect.objectContaining({
+            requestBody: expect.objectContaining({ due: '2026-04-10T00:00:00Z' }),
+        }));
     });
 
-    it('buffer_consumed も description に追記する', async () => {
-        mock_get.mockResolvedValueOnce({
-            '@odata.etag': 'W/"etag-4"',
-            description: '',
-        });
-        mock_patch.mockResolvedValueOnce({});
-
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-005', action: 'buffer_consumed', note: '神回だった' }]);
-
-        const patch_body = mock_patch.mock.calls[0][1] as { description: string };
-        expect(patch_body.description).toContain('神回だった');
+    it('reschedule で newDueDate がない場合は update しない', async () => {
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-003', action: 'reschedule' }],
+            new Map([['task-003', 'list-003']])
+        );
+        expect(mock_tasks_update).not.toHaveBeenCalled();
     });
 
-    it('undo はスナップショットから状態を復元して PATCH する', async () => {
-        const task_url = 'https://graph.microsoft.com/v1.0/planner/tasks/task-006';
+    it('add_note は既存 notes に追記して update する', async () => {
+        mock_tasks_get.mockResolvedValueOnce({ data: { notes: '既存メモ' } });
+        mock_tasks_update.mockResolvedValueOnce({ data: {} });
+
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-004', action: 'add_note', note: '新しいメモ' }],
+            new Map([['task-004', 'list-004']])
+        );
+
+        const call_arg = mock_tasks_update.mock.calls[0][0] as any;
+        expect(call_arg.requestBody.notes).toContain('既存メモ');
+        expect(call_arg.requestBody.notes).toContain('新しいメモ');
+    });
+
+    it('buffer_consumed も notes に追記して update する', async () => {
+        mock_tasks_get.mockResolvedValueOnce({ data: { notes: '' } });
+        mock_tasks_update.mockResolvedValueOnce({ data: {} });
+
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-005', action: 'buffer_consumed', note: '神回だった' }],
+            new Map([['task-005', 'list-005']])
+        );
+
+        const call_arg = mock_tasks_update.mock.calls[0][0] as any;
+        expect(call_arg.requestBody.notes).toContain('神回だった');
+    });
+
+    it('undo はスナップショットから状態を復元して update する', async () => {
         mock_restore.mockReturnValueOnce(new Map([
-            [task_url, {
-                taskId: 'task-006',
-                url: task_url,
+            ['list-key', {
+                taskId:    'task-006',
+                url:       'list-key',
                 timestamp: '2026-03-30T10:00:00Z',
-                state: { percentComplete: 0, dueDateTime: '2026-04-01T00:00:00Z' },
+                state:     { status: 'needsAction', due: '2026-04-01T00:00:00Z' },
             }],
         ]));
-        mock_get.mockResolvedValueOnce({ '@odata.etag': 'W/"etag-6"' });
-        mock_patch.mockResolvedValueOnce({});
+        mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-006', action: 'undo' }]);
+        const svc = new GoogleSyncService();
+        await svc.apply_actions(
+            [{ taskId: 'task-006', action: 'undo' }],
+            new Map([['task-006', 'list-006']])
+        );
 
         expect(mock_restore).toHaveBeenCalledWith('task-006');
-        expect(mock_patch).toHaveBeenCalledWith(
-            task_url,
-            { percentComplete: 0, dueDateTime: '2026-04-01T00:00:00Z' },
-            { 'If-Match': 'W/"etag-6"' }
-        );
-    });
-
-    it('undo でスナップショットが存在しない場合は PATCH しない', async () => {
-        mock_restore.mockReturnValueOnce(new Map());
-
-        const svc = new PlannerSyncService();
-        await svc.apply_actions([{ plannerTaskId: 'task-007', action: 'undo' }]);
-        expect(mock_patch).not.toHaveBeenCalled();
+        expect(mock_tasks_update).toHaveBeenCalled();
     });
 });

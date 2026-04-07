@@ -88,7 +88,7 @@ describe('task_schema', () => {
 describe('sync_action_schema', () => {
     it('complete アクションをパースできる', () => {
         const result = sync_action_schema.parse({
-            plannerTaskId: 'task-001',
+            taskId: 'task-001',
             action: 'complete',
         });
         expect(result.action).toBe('complete');
@@ -96,7 +96,7 @@ describe('sync_action_schema', () => {
 
     it('undo アクションをパースできる', () => {
         const result = sync_action_schema.parse({
-            plannerTaskId: 'task-002',
+            taskId: 'task-002',
             action: 'undo',
         });
         expect(result.action).toBe('undo');
@@ -105,14 +105,14 @@ describe('sync_action_schema', () => {
     it('全 action を受け付ける', () => {
         const actions = ['complete', 'reschedule', 'add_note', 'buffer_consumed', 'no_change', 'undo'] as const;
         for (const action of actions) {
-            const result = sync_action_schema.parse({ plannerTaskId: 'task-x', action });
+            const result = sync_action_schema.parse({ taskId: 'task-x', action });
             expect(result.action).toBe(action);
         }
     });
 
     it('reschedule は newDueDate を受け付ける', () => {
         const result = sync_action_schema.parse({
-            plannerTaskId: 'task-003',
+            taskId: 'task-003',
             action: 'reschedule',
             newDueDate: '2026-04-01T00:00:00Z',
         });
@@ -121,7 +121,7 @@ describe('sync_action_schema', () => {
 
     it('不正な action は失敗する', () => {
         expect(() => sync_action_schema.parse({
-            plannerTaskId: 'task-004',
+            taskId: 'task-004',
             action: 'fly_to_moon',
         })).toThrow();
     });

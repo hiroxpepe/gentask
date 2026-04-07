@@ -2,12 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 describe('validate_env', () => {
     const REQUIRED = [
-        'M365_USER_ID',
-        'M365_PLANNER_PTASK_GROUP_ID',
-        'M365_PLANNER_TTASK_GROUP_ID',
-        'M365_PLANNER_CTASK_GROUP_ID',
-        'M365_PLANNER_ATASK_GROUP_ID',
         'GCP_VERTEX_AI_API_KEY',
+        'GOOGLE_CLIENT_ID',
+        'GOOGLE_CLIENT_SECRET',
+        'GOOGLE_CALENDAR_ID',
     ];
 
     let original_env: NodeJS.ProcessEnv;
@@ -41,7 +39,7 @@ describe('validate_env', () => {
         for (const key of REQUIRED) {
             process.env[key] = 'dummy-value';
         }
-        delete process.env['M365_USER_ID'];
+        delete process.env['GOOGLE_CLIENT_ID'];
 
         const { validate_env } = await import('./env');
         expect(() => validate_env()).toThrow('process.exit called');
@@ -49,15 +47,15 @@ describe('validate_env', () => {
 
         // エラー出力の検証
         expect(error_spy).toHaveBeenCalledWith('❌ Missing required environment variables:');
-        expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('M365_USER_ID'));
+        expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('GOOGLE_CLIENT_ID'));
     });
 
     it('複数欠損がある場合に、全ての欠損リストを出力して終了する', async () => {
-        // M365_USER_ID と GCP_VERTEX_AI_API_KEY を欠損させる
+        // GOOGLE_CLIENT_ID と GCP_VERTEX_AI_API_KEY を欠損させる
         for (const key of REQUIRED) {
             process.env[key] = 'dummy-value';
         }
-        delete process.env['M365_USER_ID'];
+        delete process.env['GOOGLE_CLIENT_ID'];
         delete process.env['GCP_VERTEX_AI_API_KEY'];
 
         const { validate_env } = await import('./env');
@@ -66,7 +64,7 @@ describe('validate_env', () => {
 
         // エラー出力の検証
         expect(error_spy).toHaveBeenCalledWith('❌ Missing required environment variables:');
-        expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('M365_USER_ID'));
+        expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('GOOGLE_CLIENT_ID'));
         expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('GCP_VERTEX_AI_API_KEY'));
         // 最後のメッセージも確認
         expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('Check your .env file'));

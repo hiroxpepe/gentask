@@ -39,22 +39,12 @@ export const task_schema = z.object({
 
 export type gen_task = z.infer<typeof task_schema>;
 
-// ─── Phase 2: Outlook ↔ Planner 同期 ────────────────────────────────────────
-
-/** Outlook カレンダーイベントの必要最小構造 */
-export type outlook_event = {
-    id: string;
-    subject: string;
-    body: { contentType: string; content: string };
-    start: { dateTime: string; timeZone: string };
-    end:   { dateTime: string; timeZone: string };
-    extensions?: Array<{ id: string; plannerTaskId?: string }>;
-};
+// ─── Phase 2: Google Calendar ↔ Google Tasks 同期 ───────────────────────────
 
 /** AI が判定した同期アクション */
 export const sync_action_schema = z.object({
-    plannerTaskId: z.string()
-        .describe('操作対象の Planner タスク ID'),
+    taskId: z.string()
+        .describe('操作対象の Google Tasks タスク ID'),
 
     action: z.enum(['complete', 'reschedule', 'add_note', 'buffer_consumed', 'no_change', 'undo'])
         .describe(`解釈された操作種別：
@@ -74,12 +64,13 @@ export const sync_action_schema = z.object({
 
 export type sync_action = z.infer<typeof sync_action_schema>;
 
-/** sync_flow への入力 — Outlook イベントの現在状態をまとめたもの */
+/** sync_flow への入力 — Google Calendar イベントの現在状態をまとめたもの */
 export type sync_input_item = {
-    outlookEventId: string;
-    plannerTaskId: string;
-    subject: string;
-    bodyContent: string;
-    currentStatus: number; // Planner percentComplete (0 / 50 / 100)
+    eventId:       string;   // Google Calendar イベント ID
+    taskId:        string;   // Google Tasks タスク ID
+    listId:        string;   // Google Tasks リスト ID
+    subject:       string;
+    bodyContent:   string;
+    currentStatus: number;   // 0=未完了, 100=完了（Google Tasks は二値）
 };
 

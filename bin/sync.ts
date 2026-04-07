@@ -3,15 +3,10 @@ import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { validate_env } from '../lib/env';
-import { OutlookService } from '../lib/outlook';
-import { graph } from '../lib/graph';
+import { google } from 'googleapis';
+import { createOAuthClient } from '../src/google';
 import { snapshot } from '../lib/snapshot';
 import { sync_action_schema, type sync_input_item, type sync_action } from '../lib/types';
-
-// 環境設定
-const target_env = process.argv[2] || 'dev';
-dotenv.config({ path: `.env.${target_env}` });
-validate_env();
 
 const ai_engine = genkit({
     plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
@@ -20,17 +15,18 @@ const ai_engine = genkit({
 
 /**
  * @function sync_flow
- * @description Outlook イベントの変化を AI が解釈し、Planner への操作指示（sync_action[]）を生成する Flow。
+ * @description Google Calendar イベントの変化を AI が解釈し、Google Tasks への操作指示（sync_action[]）を生成する Flow。
  */
 export const sync_flow = ai_engine.defineFlow(
     {
         name: 'sync_flow',
         inputSchema: z.array(z.object({
-            outlookEventId: z.string(),
-            plannerTaskId:  z.string(),
-            subject:        z.string(),
-            bodyContent:    z.string(),
-            currentStatus:  z.number(),
+            eventId:       z.string(),
+            taskId:        z.string(),
+            listId:        z.string(),
+            subject:       z.string(),
+            bodyContent:   z.string(),
+            currentStatus: z.number(),
         })),
         outputSchema: z.array(sync_action_schema),
     },
@@ -38,18 +34,15 @@ export const sync_flow = ai_engine.defineFlow(
         if (items.length === 0) return [];
 
         const items_text = items.map((item, i) =>
-            `[${i + 1}] タスクID: ${item.plannerTaskId}
-` +
-            `    件名: ${item.subject}
-` +
-            `    本文: ${item.bodyContent.trim().slice(0, 300)}
-` +
+            `[${i + 1}] タスクID: ${item.taskId}\n` +
+            `    件名: ${item.subject}\n` +
+            `    本文: ${item.bodyContent.trim().slice(0, 300)}\n` +
             `    現在の進捗: ${item.currentStatus}%`
         ).join('\n\n');
 
         const { output } = await ai_engine.generate({
-            prompt: `あなたはプロジェクト管理AIです。以下はOutlookカレンダーの予定一覧です。
-各予定の本文に書かれた内容を分析し、Plannerタスクへの更新指示を出力してください。
+            prompt: `あなたはプロジェクト管理AIです。以下はGoogle Calendarの予定一覧です。
+各予定の本文に書かれた内容を分析し、Google Tasksへの更新指示を出力してください。
 
 判断基準：
 - "ok"、"完了"、"done"、"済" → complete
@@ -70,34 +63,52 @@ ${items_text}`,
 );
 
 /**
- * @class PlannerSyncService
- * @description sync_flow の出力を受け取り、Planner に実際の変更を適用するサービス。
+ * @class GoogleSyncService
+ * @description sync_flow の出力を受け取り、Google Tasks に実際の変更を適用するサービス。
  */
-export class PlannerSyncService {
-    private readonly base_url = 'https://graph.microsoft.com/v1.0/planner/tasks';
+export class GoogleSyncService {
+    /**
+     * @method apply_actions
+     * @description AI が生成したアクション配列を Google Tasks API に反映する。
+     * @param actions AI が生成した同期アクション一覧
+     * @param list_map taskId → listId の対応マップ
+     */
+    async apply_actions(
+        actions: sync_action[],
+        list_map: Map<string, string>
+    ): Promise<void> {
+        const auth         = createOAuthClient();
+        const tasks_client = google.tasks({ version: 'v1', auth });
 
-    async apply_actions(actions: sync_action[]): Promise<void> {
         for (const action of actions) {
             if (action.action === 'no_change') continue;
 
-            console.log(`  [Sync] ${action.action} → Task: ${action.plannerTaskId}`);
+            const task_id = action.taskId;
+            const list_id = list_map.get(task_id);
 
-            const task_url = `${this.base_url}/${action.plannerTaskId}`;
+            if (!list_id) {
+                console.warn(`  [Sync] listId not found for taskId: ${task_id}. Skipping.`);
+                continue;
+            }
+
+            console.log(`  [Sync] ${action.action} → Task: ${task_id}`);
 
             switch (action.action) {
                 case 'complete': {
-                    const task = await graph.get(task_url);
-                    await graph.patch(task_url, { percentComplete: 100 }, {
-                        'If-Match': task['@odata.etag']
+                    await tasks_client.tasks.update({
+                        tasklist: list_id,
+                        task:     task_id,
+                        requestBody: { id: task_id, status: 'completed' },
                     });
                     break;
                 }
 
                 case 'reschedule': {
                     if (!action.newDueDate) break;
-                    const task = await graph.get(task_url);
-                    await graph.patch(task_url, { dueDateTime: action.newDueDate }, {
-                        'If-Match': task['@odata.etag']
+                    await tasks_client.tasks.update({
+                        tasklist: list_id,
+                        task:     task_id,
+                        requestBody: { id: task_id, due: action.newDueDate },
                     });
                     break;
                 }
@@ -105,44 +116,35 @@ export class PlannerSyncService {
                 case 'add_note':
                 case 'buffer_consumed': {
                     if (!action.note) break;
-                    const details_url = `${this.base_url}/${action.plannerTaskId}/details`;
-                    const details = await graph.get(details_url);
-                    const prev = (details.description as string | undefined) ?? '';
+                    const current = await tasks_client.tasks.get({
+                        tasklist: list_id,
+                        task:     task_id,
+                    });
+                    const prev    = current.data.notes ?? '';
                     const updated = prev
-                        ? `${prev}
-
----
-${new Date().toISOString()}: ${action.note}`
+                        ? `${prev}\n\n---\n${new Date().toISOString()}: ${action.note}`
                         : `${new Date().toISOString()}: ${action.note}`;
-                    await graph.patch(details_url, { description: updated }, {
-                        'If-Match': details['@odata.etag']
+                    await tasks_client.tasks.update({
+                        tasklist: list_id,
+                        task:     task_id,
+                        requestBody: { id: task_id, notes: updated },
                     });
                     break;
                 }
 
                 case 'undo': {
-                    // snapshot から直前の状態を復元する
-                    const snap_map = snapshot.restore(action.plannerTaskId);
+                    // ⚠️ snapshot.ts の url フィールドを listId として読み替えている
+                    const snap_map = snapshot.restore(task_id);
                     if (snap_map.size === 0) {
-                        console.warn(`  [Undo]  No snapshot found for task: ${action.plannerTaskId}`);
+                        console.warn(`  [Undo] No snapshot found for task: ${task_id}`);
                         break;
                     }
-                    for (const [url, snap] of snap_map) {
-                        // 復元対象フィールドをフィルタリング（etag や system フィールドを除外）
-                        const restorable_keys = [
-                            'percentComplete', 'dueDateTime', 'title', 'priority',
-                            'description',  // details URL の場合
-                        ];
-                        const restorable = Object.fromEntries(
-                            Object.entries(snap.state).filter(([k]) => restorable_keys.includes(k))
-                        );
-                        if (Object.keys(restorable).length === 0) break;
-
-                        const current = await graph.get(url);
-                        await graph.patch(url, restorable, {
-                            'If-Match': current['@odata.etag']
+                    for (const [, snap] of snap_map) {
+                        await tasks_client.tasks.update({
+                            tasklist: list_id,
+                            task:     task_id,
+                            requestBody: { id: task_id, ...snap.state },
                         });
-                        console.log(`  [Undo]  Restored ${Object.keys(restorable).join(', ')} → ${url}`);
                     }
                     break;
                 }
@@ -153,48 +155,76 @@ ${new Date().toISOString()}: ${action.note}`
 
 /**
  * @description sync コマンドのエントリポイント。
- * Outlook から紐付き予定を取得 → AI で解釈 → Planner に反映する。
+ * Google Calendar から紐付き予定を取得 → AI で解釈 → Google Tasks に反映する。
+ * @param sync_svc テスト時に差し替え可能なサービスインスタンス
  */
 export async function main(
-    outlook = new OutlookService(),
-    sync_svc = new PlannerSyncService()
+    sync_svc = new GoogleSyncService()
 ) {
     try {
-        // 1. Outlook から gentask 拡張付き予定を取得
-        console.log('🔍 Fetching linked Outlook events...');
-        const linked_events = await outlook.get_linked_events();
+        const auth         = createOAuthClient();
+        const cal_client   = google.calendar({ version: 'v3', auth });
+        const tasks_client = google.tasks({ version: 'v1', auth });
+        const calendar_id  = process.env.GOOGLE_CALENDAR_ID!;
 
-        if (linked_events.length === 0) {
+        // 1. gentask リンク付きカレンダーイベントを2週間分取得
+        console.log('🔍 Fetching linked Google Calendar events...');
+        const two_weeks_ago = new Date(Date.now() - 14 * 24 * 60 * 60_000).toISOString();
+
+        const events_res = await cal_client.events.list({
+            calendarId:              calendar_id,
+            timeMin:                 two_weeks_ago,
+            privateExtendedProperty: 'gentask_taskId',
+            singleEvents:            true,
+            orderBy:                 'startTime',
+        });
+
+        const events = events_res.data.items ?? [];
+        if (events.length === 0) {
             console.log('✅ No linked events found. Nothing to sync.');
             return;
         }
-        console.log(`   Found ${linked_events.length} event(s).`);
+        console.log(`   Found ${events.length} event(s).`);
 
-        // 2. 対応 Planner タスクの現在 percentComplete を取得してマップ構築
-        const status_map = new Map<string, number>();
-        for (const event of linked_events) {
-            const ext = event.extensions?.find(e => e.id === 'com.gentask.v1');
-            if (!ext?.plannerTaskId) continue;
-            const task = await graph.get(
-                `https://graph.microsoft.com/v1.0/planner/tasks/${ext.plannerTaskId}`
-            );
-            status_map.set(ext.plannerTaskId, task.percentComplete as number ?? 0);
+        // 2. 各イベントから taskId / listId を取得し、タスクのステータスを確認
+        const sync_inputs: sync_input_item[] = [];
+        const list_map = new Map<string, string>(); // taskId → listId
+
+        for (const event of events) {
+            const priv    = event.extendedProperties?.private ?? {};
+            const task_id = priv['gentask_taskId'];
+            const list_id = priv['gentask_listId'];
+
+            if (!task_id || !list_id) continue;
+
+            const task_res = await tasks_client.tasks.get({
+                tasklist: list_id,
+                task:     task_id,
+            });
+
+            const current_status = task_res.data.status === 'completed' ? 100 : 0;
+            list_map.set(task_id, list_id);
+
+            sync_inputs.push({
+                eventId:       event.id!,
+                taskId:        task_id,
+                listId:        list_id,
+                subject:       event.summary ?? '',
+                bodyContent:   event.description ?? '',
+                currentStatus: current_status,
+            });
         }
 
-        // 3. sync_flow への入力を組み立て
-        const sync_inputs: sync_input_item[] = outlook.build_sync_inputs(linked_events, status_map);
-
-        // 4. AI で変化を解釈
+        // 3. AI で変化を解釈
         console.log('🤖 Analyzing changes with AI...');
         const actions = await sync_flow(sync_inputs);
-        const active = actions.filter(a => a.action !== 'no_change');
+        const active  = actions.filter(a => a.action !== 'no_change');
         console.log(`   ${active.length} action(s) to apply.`);
 
-        // 5. Planner に反映
-        await sync_svc.apply_actions(actions);
+        // 4. Google Tasks に反映
+        await sync_svc.apply_actions(actions, list_map);
 
-        console.log(`
-✨ Sync complete. ${active.length} task(s) updated.`);
+        console.log(`\n✨ Sync complete. ${active.length} task(s) updated.`);
     } catch (error) {
         console.error('Fatal sync error:', error);
     }
@@ -202,5 +232,9 @@ export async function main(
 
 const is_main = process.argv[1] === fileURLToPath(import.meta.url);
 if (is_main) {
+    // CLI 専用の副作用: 環境設定とバリデーションをエントリポイント内に限定
+    const target_env = process.argv[2] || 'dev';
+    dotenv.config({ path: `.env.${target_env}` });
+    validate_env();
     main();
 }
