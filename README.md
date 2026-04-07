@@ -156,6 +156,13 @@ Create `.env.dev` (and optionally `.env.prod`):
 ```env
 PROJECT_ENV=DEV
 
+# Microsoft 365 (Planner / Outlook)
+M365_USER_ID=your-m365-user-id
+M365_PLANNER_PTASK_GROUP_ID=your-ptask-group-id
+M365_PLANNER_TTASK_GROUP_ID=your-ttask-group-id
+M365_PLANNER_CTASK_GROUP_ID=your-ctask-group-id
+M365_PLANNER_ATASK_GROUP_ID=your-atask-group-id
+
 # Google Cloud
 GCP_PROJECT_ID=your-gcp-project-id
 GCP_VERTEX_AI_API_KEY=your-google-ai-api-key
