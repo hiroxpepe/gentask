@@ -250,7 +250,7 @@ npm run test:watch
 
 ```
 gentask/
-├── bin/               # エントリーポイント / CLI スクリプト（例: gen-google.ts, sync-google.ts）
+├── bin/               # エントリーポイント / CLI スクリプト（例: index.ts, sync.ts, google.ts, slide.ts）
 ├── lib/               # API ラッパーとユーティリティ（google-auth.ts, google-tasks.ts, google-calendar.ts）
 ├── src/               # コアビジネスロジック（ai-flow.ts, sync-rules.ts, types.ts）
 ├── tools/             # デプロイや補助スクリプト
