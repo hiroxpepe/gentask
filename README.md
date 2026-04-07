@@ -2,7 +2,7 @@
 
 > **AI-powered, energy-aware task orchestration for weekly manga serialization**
 
-Gentask is a CLI tool that integrates **Microsoft 365 Planner** and **Outlook** with **Gemini 2.0 Flash AI** to manage the relentless production cycle of weekly manga serialization — automatically, intelligently, and with minimal friction.
+Gentask is a CLI tool that integrates **Google Tasks** and **Google Calendar** with **Gemini 2.0 Flash (Vertex AI)** via GenKit to manage the production cycle of weekly manga serialization — automatically, intelligently, and with minimal friction.
 
 ---
 
@@ -10,7 +10,7 @@ Gentask is a CLI tool that integrates **Microsoft 365 Planner** and **Outlook** 
 
 > *"Management that doesn't feel like management."*
 
-A manga artist works in Outlook — their free canvas for moving blocks of time and jotting notes. Gentask (AI) silently reads those signals, calculates the gap against the **18sp production model**, and keeps the Planner ledger up to date without the artist ever having to touch it.
+A manga artist works in Google Calendar — their free canvas for moving blocks of time and jotting notes. Gentask (AI) silently reads those signals, calculates the gap against the **18sp production model**, and keeps the Google Tasks lists up to date without the artist ever having to touch it.
 
 Most task managers optimize for priority and deadlines.  
 **Gentask optimizes for execution energy and sustainable creative output.**
@@ -37,7 +37,7 @@ Gentask models one episode of manga as **18.0 story-points (18 hours)**, decompo
 
 ## 🗂 Task Modes
 
-Tasks are classified into four execution modes, each mapping to a dedicated Microsoft 365 Planner plan:
+Tasks are classified into four execution modes, each mapping to a dedicated Google Tasks task list:
 
 | Mode | Type | Description | Default Bucket |
 |---|---|---|---|
@@ -60,42 +60,40 @@ Each mode maintains three buckets:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                        Gentask CLI                       │
-│                                                          │
-│  gen:dev / gen:prod                                      │
-│       │                                                  │
-│       ▼                                                  │
-│  ┌─────────────┐     AI (Gemini 2.0 Flash)              │
-│  │  index.ts   │────► task_flow (GenKit)                 │
-│  │  task gen   │     Generate structured task array      │
-│  └──────┬──────┘                                        │
-│         │                                                │
-│         ▼                                                │
-│  ┌─────────────┐     MS Graph API (via az rest)         │
-│  │ planner.ts  │────► Create plans / buckets / tasks    │
-│  │ deployment  │────► Link Outlook events (Open Ext.)   │
-│  └─────────────┘                                        │
-│                                                          │
-│  sync:dev / sync:prod                                    │
-│       │                                                  │
-│       ▼                                                  │
-│  ┌─────────────┐     MS Graph API                       │
-│  │  outlook.ts │────► Read calendar events              │
-│  └──────┬──────┘                                        │
-│         │                                                │
-│         ▼                                                │
-│  ┌─────────────┐     AI (Gemini 2.0 Flash)              │
+│                        Gentask CLI                      │
+│                                                         │
+│  gen:dev / gen:prod                                     │
+│       │                                                 │
+│       ▼                                                 │
+│  ┌─────────────┐     AI (Gemini 2.0 Flash / Vertex AI)  │
+│  │  index.ts   │────► task_flow (GenKit)                │
+│  │  task gen   │     Generate structured task array     │
+│  └──────┬──────┘                                         │
+│         │                                               │
+│         ▼                                               │
+│  ┌─────────────┐     Google Tasks API / Google Calendar │
+│  │ tasks.ts    │────► Create task lists / tasks         │
+│  │ deployment  │────► Link Calendar events              │
+│  └──────┬──────┘                                         │
+│         │                                               │
+│         ▼                                               │
+│  ┌─────────────┐     Google Calendar API                 │
+│  │  calendar.ts│────► Read calendar events               │
+│  └──────┬──────┘                                         │
+│         │                                               │
+│         ▼                                               │
+│  ┌─────────────┐     AI (Gemini 2.0 Flash / Vertex AI)  │
 │  │   sync.ts   │────► Interpret events → actions        │
-│  │ AI sync     │────► PATCH Planner tasks               │
-│  └─────────────┘                                        │
-│                                                          │
-│  slide:dev / slide:prod                                  │
-│       │                                                  │
-│       ▼                                                  │
-│  ┌─────────────┐     MS Graph API                       │
+│  │ AI sync     │────► PATCH Tasks                       │
+│  └─────────────┘                                         │
+│                                                         │
+│  slide:dev / slide:prod                                 │
+│       │                                                 │
+│       ▼                                                 │
+│  ┌─────────────┐     Google Tasks / Calendar            │
 │  │   slide.ts  │────► Archive → Promote → Schedule      │
 │  │ weekly slide│────► Generate next episode plot        │
-│  └─────────────┘                                        │
+│  └─────────────┘                                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -104,12 +102,12 @@ Each mode maintains three buckets:
 ## 🚀 Features
 
 ### 1. AI Task Generation (`gen`)
-Given a subject (e.g. "Episode 42 of My Manga"), Gentask uses Gemini 2.0 Flash to generate a structured, mode-classified task array covering all four quadrants (P/T/C/A). Tasks are immediately deployed to Microsoft 365 Planner with the correct bucket placement and linked Outlook calendar events.
+Given a subject (e.g. "Episode 42 of My Manga"), Gentask uses Gemini 2.0 Flash (Vertex AI) via GenKit to generate a structured, mode-classified task array covering all four quadrants (P/T/C/A). Tasks are immediately deployed to Google Tasks into the correct task list (今週分 / 来週分 / 完了) with linked Google Calendar events.
 
 ### 2. Intelligent AI Synchronizer (`sync`)
-Gentask reads your Outlook calendar events and uses AI to interpret free-form notes as structured progress signals:
+Gentask reads your Google Calendar events and uses AI to interpret free-form notes as structured progress signals:
 
-| User action in Outlook | AI interpretation | Planner update |
+| User action in Calendar | AI interpretation | Tasks update |
 |---|---|---|
 | Writes "ok" in event body | "This 30-min block is done" | Task marked complete (100%) |
 | Moves event 30 min later | "Work time shifted" | Due date auto-corrected |
@@ -119,21 +117,21 @@ Gentask reads your Outlook calendar events and uses AI to interpret free-form no
 Supported sync actions: `complete`, `reschedule`, `add_note`, `buffer_consumed`, `no_change`, `undo`.
 
 ### 3. Snapshot & Undo
-Before every Planner PATCH, the current task state is saved as a JSON snapshot to `~/.gentask/snapshots/{taskId}.json`. To roll back: write `undo` or `戻して` in any Outlook event — the AI will detect it and restore the task to its previous state.
+Before every task update, the current task state is saved as a JSON snapshot to `~/.gentask/snapshots/{taskId}.json`. To roll back: write `undo` or `戻して` in the linked Calendar event — the AI will detect it and restore the task to its previous state.
 
 ### 4. Weekly Slide (Sunday 21:00 Process)
 The `slide` command automates the weekly episode transition:
 
 1. **Verify** — Check that the "Post" task is 100% complete
-2. **Archive** — Move all this-week tasks to the 完了 bucket
+2. **Archive** — Move all this-week tasks to the 完了 list
 3. **Promote** — Move next-week planning tasks (plot, storyboard) to this-week
-4. **Schedule** — Create Outlook calendar events for promoted tasks (Mon–Fri)
+4. **Schedule** — Create Google Calendar events for promoted tasks (Mon–Fri)
 5. **Generate** — AI-generate a new plot task for the following episode into 来週分
 
-### 5. Bidirectional Open Extensions
-Every Outlook event and every Planner task carry cross-references:
-- Outlook event: `{ "plannerTaskId": "xyz-123" }`
-- Planner task: `{ "outlookEventId": "evt-789" }`
+### 5. Bidirectional Links
+Every Calendar event and every Task carry cross-references:
+- Calendar event: `{ "taskId": "xyz-123" }`
+- Task: `{ "eventId": "evt-789" }`
 
 This ensures sync integrity even if the user renames events or tasks.
 
@@ -144,9 +142,9 @@ This ensures sync integrity even if the user renames events or tasks.
 | Tool | Purpose |
 |---|---|
 | `node` ≥ 18 | Runtime |
-| `az` (Azure CLI) | MS Graph API calls via `az rest` |
-| Microsoft 365 account | Planner + Outlook access |
-| Google AI API key | Gemini 2.0 Flash via GenKit |
+| `gcloud` (Google Cloud SDK) | Google APIs & authentication |
+| Google account | Tasks + Calendar access |
+| Google Vertex AI API key | Gemini 2.0 Flash via GenKit |
 
 ---
 
@@ -157,28 +155,28 @@ Create `.env.dev` (and optionally `.env.prod`):
 ```env
 PROJECT_ENV=DEV
 
-# Microsoft 365
-M365_USER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-M365_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-M365_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-M365_CLIENT_SECRET=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# Planner Group IDs (one per task mode)
-M365_PLANNER_PTASK_GROUP_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-M365_PLANNER_TTASK_GROUP_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-M365_PLANNER_CTASK_GROUP_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-M365_PLANNER_ATASK_GROUP_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# Google AI (Vertex AI / Gemini)
+# Google Cloud
+GCP_PROJECT_ID=your-gcp-project-id
 GCP_VERTEX_AI_API_KEY=your-google-ai-api-key
+
+# OAuth (Google) - for Calendar/Tasks API access
+GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxxxxxxx
+
+# Optional: predefined Task list IDs (one per task mode)
+GENTASK_TASKLIST_PTASK_ID=xxxxxxxxxxxxxxxx
+GENTASK_TASKLIST_TTASK_ID=xxxxxxxxxxxxxxxx
+GENTASK_TASKLIST_CTASK_ID=xxxxxxxxxxxxxxxx
+GENTASK_TASKLIST_ATASK_ID=xxxxxxxxxxxxxxxx
 ```
 
 > ⚠️ Never commit `.env.*` files to the repository.
 
-Authenticate the Azure CLI before running:
+Authenticate the Google Cloud SDK before running:
 
 ```sh
-az login --tenant <your-tenant-id>
+gcloud auth login
+gcloud config set project $GCP_PROJECT_ID
 ```
 
 ---
@@ -205,15 +203,15 @@ npm run gen:prod -- "Episode 42: The Final Battle"
 
 This will:
 - Call Gemini AI to generate a structured task list
-- Create 3-bucket Planner plans (今週分 / 来週分 / 完了) for each mode
-- Deploy tasks to the correct bucket
-- Create linked Outlook calendar events
-- Store bidirectional Open Extension metadata
+- Create 3-bucket task lists in Google Tasks (今週分 / 来週分 / 完了) for each mode
+- Deploy tasks to the correct task list
+- Create linked Google Calendar events
+- Store bidirectional link metadata between tasks and events
 
-### AI Sync (Update Planner from Outlook)
+### AI Sync (Update Tasks from Calendar)
 
 ```sh
-# Read Outlook events and sync progress to Planner (dev)
+# Read Google Calendar events and sync progress to Google Tasks (dev)
 npm run sync:dev
 
 # Production
@@ -250,21 +248,15 @@ npm run test:watch
 
 ```
 gentask/
-├── index.ts          # CLI entry point + AI task generation flow
-├── types.ts          # Zod schemas: task modes, sync actions, bucket roles
-├── env.ts            # Environment variable validation
-├── graph.ts          # Low-level MS Graph API wrapper (az rest)
-├── planner.ts        # Planner deployment: plans, buckets, tasks, extensions
-├── outlook.ts        # Outlook: calendar events, extensions, sync input builder
-├── sync.ts           # AI Synchronizer: interpret events → apply Planner actions
-├── snapshot.ts       # Snapshot engine: save/restore task state for undo
-├── slide.ts          # Weekly slide: archive → promote → schedule → generate
+├── bin/               # Entry points / CLI scripts (e.g., gen-google.ts, sync-google.ts)
+├── lib/               # API wrappers and utilities (google-auth.ts, google-tasks.ts, google-calendar.ts)
+├── src/               # Core business logic (ai-flow.ts, sync-rules.ts, types.ts)
+├── tools/             # Deployment and helper scripts
+├── *.test.ts          # Vitest unit tests
+├── vitest.config.ts   # Vitest configuration (ESM)
 │
-├── *.test.ts         # Vitest unit tests (60 tests, 9 files)
-├── vitest.config.ts  # Vitest configuration (ESM, pool: forks)
-│
-├── .env.dev          # Dev environment config (not committed)
-├── .env.prod         # Prod environment config (not committed)
+├── .env.dev           # Dev environment config (not committed)
+├── .env.prod          # Prod environment config (not committed)
 ├── package.json
 └── tsconfig.json
 ```
@@ -278,9 +270,9 @@ Monday
   │  npm run gen:dev -- "Episode N+1"  ← Deploy this week's production tasks
   │
 Mon–Sun
-  │  Work in Outlook (move blocks, write notes)
+  │  Work in Google Calendar (move blocks, write notes)
   │
-  │  npm run sync:dev  ← Run anytime to reflect progress in Planner
+  │  npm run sync:dev  ← Run anytime to reflect progress in Google Tasks
   │
 Sunday 21:00
   │  Post episode ✅
@@ -296,11 +288,11 @@ Monday (next week)  ← Ready to go
 
 To undo the last sync operation on a task:
 
-1. Open the linked Outlook event
+1. Open the linked Calendar event
 2. Write `undo` or `戻して` anywhere in the event body
 3. Run `npm run sync:dev`
 
-Gentask will detect the undo signal, restore the task from its snapshot, and re-apply the previous state to Planner.
+Gentask will detect the undo signal, restore the task from its snapshot, and re-apply the previous state to Google Tasks.
 
 ---
 
