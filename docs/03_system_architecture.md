@@ -5,8 +5,8 @@
 
 * **AIモデル:** Google Vertex AI (`gemini-2.0-flash`)
 * **AIフレームワーク:** Genkit (Node.js / TypeScript)
-* **タスク/スケジュール基盤:** Google Tasks API, Google Calendar API
-* **インフラ管理:** Google Cloud CLI (gcloud)
+* **タスク/スケジュール基盤:** Microsoft 365 Planner + Outlook (Microsoft Graph) および Google Tasks + Google Calendar (Google APIs) をサポート
+* **インフラ管理:** Google Cloud CLI (gcloud)（Googleフロー）および Azure CLI (az)（Microsoft フロー）
 
 ## 2. 環境分離とサンドボックス設計（Dev / Prod）
 
