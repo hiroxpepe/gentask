@@ -31,8 +31,8 @@
 graph LR
     A[Genkit AI / Logic] -->|判定: PTASK| B{環境判定 .env}
     
-    B -->|PROJECT_ENV=DEV| C[サンドボックス<br/>Dev Calendar / Dev Tasks]
-    B -->|PROJECT_ENV=PROD| D[本番<br/>Prod Calendar / Prod Tasks]
+    B -->|PROJECT_ENV=DEV| C[サンドボックス<br>Dev Calendar / Dev Tasks]
+    B -->|PROJECT_ENV=PROD| D[本番<br>Prod Calendar / Prod Tasks]
     
     C --> E[Google Tasks API / Google Calendar API]
     D --> E
@@ -107,15 +107,15 @@ gentask_{MODE}_{バケット名}
 
 ```mermaid
 flowchart TD
-    A[get_container(mode, auth)] --> B{~/.gentask/tasklists.json<br/>にキャッシュあり?}
-    B -->|Yes| C[キャッシュから返す]
-    B -->|No| D[tasklists.list で既存リスト一覧取得]
-    D --> E{gentask_{MODE}_* が存在?}
-    E -->|Yes| F[既存リストIDを使用]
-    E -->|No| G[tasklists.insert で新規作成]
-    F --> H[キャッシュに保存]
+    A["get_container(mode, auth)"] --> B{"~/.gentask/tasklists.json<br>にキャッシュあり?"}
+    B -->|Yes| C["キャッシュから返す"]
+    B -->|No| D["tasklists.list で既存リスト一覧取得"]
+    D --> E{"gentask_{MODE}_* が存在?"}
+    E -->|Yes| F["既存リストIDを使用"]
+    E -->|No| G["tasklists.insert で新規作成"]
+    F --> H["キャッシュに保存"]
     G --> H
-    H --> I[{ current, next, done } を返す]
+    H --> I["{ current, next, done } を返す"]
 ```
 
 ### `GoogleContainerManager` インターフェース
