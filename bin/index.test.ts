@@ -62,8 +62,8 @@ describe('task_flow', () => {
             const generate_call_args = mock_generate.mock.calls[0][0];
 
             // 1. Check if the prompt contains the core instructions
-            expect(generate_call_args.prompt).toContain('あなたは超一流のマネージャーです。');
-            expect(generate_call_args.prompt).toContain(`「${input_subject}」という目標を達成するために`);
+            expect(generate_call_args.prompt).toContain('あなたは週刊漫画連載の超一流マネージャーです。');
+            expect(generate_call_args.prompt).toContain(`「${input_subject}」を達成するために必要な具体的タスクを`);
             expect(generate_call_args.prompt).toContain('P(戦略)・T(技術)・C(制作)・A(事務) の全方位から網羅的に分解');
 
             // 2. Check if the output schema is correctly passed

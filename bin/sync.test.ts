@@ -8,10 +8,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── vi.hoisted でモック関数を宣言 ───────────────────────────────────────────
 
-const { mock_tasks_get, mock_tasks_update, mock_restore } = vi.hoisted(() => ({
+const { mock_tasks_get, mock_tasks_update, mock_restore, mock_save } = vi.hoisted(() => ({
     mock_tasks_get:    vi.fn(),
     mock_tasks_update: vi.fn(),
     mock_restore:      vi.fn(),
+    mock_save:         vi.fn(),
 }));
 
 // ─── モック設定 ───────────────────────────────────────────────────────────────
@@ -45,11 +46,15 @@ vi.mock('googleapis', () => ({
 }));
 
 vi.mock('../src/google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
-vi.mock('../lib/snapshot', () => ({ snapshot: { restore: mock_restore } }));
+vi.mock('../lib/snapshot', () => ({ snapshot: { restore: mock_restore, save: mock_save } }));
 
 // ─── テスト対象 ───────────────────────────────────────────────────────────────
 
 import { GoogleSyncService } from './sync';
+
+/** テスト用の有効なメタデータ埋め込み notes を生成する */
+const make_meta_notes = (uuid: string) =>
+    `[gentask:{"uuid":"${uuid}","eventId":"evt-1","calendarId":"cal-1","listId":"list-001","sub_role":"other"}]`;
 
 describe('GoogleSyncService.apply_actions', () => {
     beforeEach(() => {
@@ -75,6 +80,9 @@ describe('GoogleSyncService.apply_actions', () => {
     });
 
     it('complete は status: completed で update する', async () => {
+        mock_tasks_get.mockResolvedValueOnce({ data: {
+            notes: make_meta_notes('uuid-001'), title: 'Task', status: 'needsAction',
+        } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
         const svc = new GoogleSyncService();
@@ -91,6 +99,9 @@ describe('GoogleSyncService.apply_actions', () => {
     });
 
     it('reschedule は newDueDate で update する', async () => {
+        mock_tasks_get.mockResolvedValueOnce({ data: {
+            notes: make_meta_notes('uuid-002'), title: 'Task', status: 'needsAction',
+        } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
         const svc = new GoogleSyncService();
@@ -114,7 +125,10 @@ describe('GoogleSyncService.apply_actions', () => {
     });
 
     it('add_note は既存 notes に追記して update する', async () => {
-        mock_tasks_get.mockResolvedValueOnce({ data: { notes: '既存メモ' } });
+        mock_tasks_get.mockResolvedValueOnce({ data: {
+            notes: `既存メモ\n${make_meta_notes('uuid-004')}`,
+            title: 'Task', status: 'needsAction',
+        } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
         const svc = new GoogleSyncService();
@@ -129,7 +143,10 @@ describe('GoogleSyncService.apply_actions', () => {
     });
 
     it('buffer_consumed も notes に追記して update する', async () => {
-        mock_tasks_get.mockResolvedValueOnce({ data: { notes: '' } });
+        mock_tasks_get.mockResolvedValueOnce({ data: {
+            notes: make_meta_notes('uuid-005'),
+            title: 'Task', status: 'needsAction',
+        } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
         const svc = new GoogleSyncService();
@@ -143,14 +160,17 @@ describe('GoogleSyncService.apply_actions', () => {
     });
 
     it('undo はスナップショットから状態を復元して update する', async () => {
-        mock_restore.mockReturnValueOnce(new Map([
-            ['list-key', {
-                taskId:    'task-006',
-                url:       'list-key',
-                timestamp: '2026-03-30T10:00:00Z',
-                state:     { status: 'needsAction', due: '2026-04-01T00:00:00Z' },
-            }],
-        ]));
+        const uuid = 'uuid-006-undo';
+        mock_tasks_get.mockResolvedValueOnce({ data: {
+            notes: make_meta_notes(uuid), title: 'Task', status: 'completed',
+        } });
+        mock_restore.mockReturnValueOnce({
+            uuid,
+            taskId:    'task-006',
+            listId:    'list-006',
+            timestamp: '2026-03-30T10:00:00Z',
+            state:     { status: 'needsAction', due: '2026-04-01T00:00:00Z' },
+        });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
         const svc = new GoogleSyncService();
@@ -159,7 +179,7 @@ describe('GoogleSyncService.apply_actions', () => {
             new Map([['task-006', 'list-006']])
         );
 
-        expect(mock_restore).toHaveBeenCalledWith('task-006');
+        expect(mock_restore).toHaveBeenCalledWith(uuid); // UUID で検索（taskId ではない）
         expect(mock_tasks_update).toHaveBeenCalled();
     });
 });

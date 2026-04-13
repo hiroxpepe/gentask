@@ -15,7 +15,16 @@ import { validate_env } from '../lib/env';
 import { google } from 'googleapis';
 import { createOAuthClient } from '../src/google';
 import { GoogleContainerManager } from '../src/google-container-manager';
-import { task_schema, type bucket_role } from '../lib/types';
+import {
+    task_schema,
+    type bucket_role,
+    type gen_task,
+    decode_gentask_metadata,
+    encode_gentask_metadata,
+    strip_gentask_metadata,
+    generate_gentask_uuid,
+} from '../lib/types';
+import { snapshot } from '../lib/snapshot';
 
 const ai_engine = genkit({
     plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
@@ -26,19 +35,23 @@ const ai_engine = genkit({
 
 const MODES = ['PTASK', 'TTASK', 'CTASK', 'ATASK'] as const;
 
+type SubRole = gen_task['sub_role'];
+
 /**
- * spec §3 週間マトリクス：プロット / ネーム の Google Calendar 配置ルール（JST 時刻）
+ * spec §3 週間マトリクス：plot / name の Google Calendar 配置ルール（JST 時刻）
+ * キーは sub_role enum 値（文字列一致ではない）。
  * day: 1=月, 2=火, 3=水, 4=木, 5=金
  * blocks: 1 ブロック = 30 分
  */
-export const PLANNING_SCHEDULE: Record<string, { day: number; hour: number; blocks: number }[]> = {
-    'プロット': [
+export const PLANNING_SCHEDULE: Partial<Record<SubRole, { day: number; hour: number; blocks: number }[]>> = {
+    'plot': [
         { day: 3, hour: 14, blocks: 2 }, // 水 14:00〜15:00 (2×30min)
         { day: 4, hour: 14, blocks: 2 }, // 木 14:00〜15:00
     ],
-    'ネーム': [
+    'name': [
         { day: 5, hour: 14, blocks: 2 }, // 金 14:00〜15:00
     ],
+    // 'post' と 'other' はデフォルトスロット（翌月曜 09:00 から順次配置）
 };
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
@@ -48,25 +61,18 @@ export const PLANNING_SCHEDULE: Record<string, { day: number; hour: number; bloc
  * @description Google Tasks API から取得したタスクの必要最小構造。
  */
 export interface GoogleTaskItem {
-    id:      string;
-    title:   string;
-    notes?:  string;
-    status:  'needsAction' | 'completed';
-    due?:    string;
-    listId:  string;
+    id:       string;
+    title:    string;
+    notes?:   string;
+    status:   'needsAction' | 'completed';
+    due?:     string;
+    listId:   string;
+    sub_role: SubRole; // タスクの工程ロール（デフォルト 'other'）
 }
 
 // ─── スケジュールユーティリティ ──────────────────────────────────────────────
 
-/**
- * @function get_schedule_key
- * @description タイトルから PLANNING_SCHEDULE のキーを検索して返す。
- * @param title タスクタイトル
- * @returns マッチしたスケジュールキー、または undefined
- */
-function get_schedule_key(title: string): string | undefined {
-    return Object.keys(PLANNING_SCHEDULE).find(k => title.includes(k));
-}
+// get_schedule_key は廃止 — sub_role による直接分岐に移行
 
 // ─── 日付ユーティリティ ───────────────────────────────────────────────────────
 
@@ -115,26 +121,31 @@ async function get_tasks_in_list(list_id: string, auth: any): Promise<GoogleTask
         tasklist:      list_id,
         showCompleted: false,
     });
-    return (res.data.items ?? []).map(t => ({
-        id:     t.id!,
-        title:  t.title ?? '',
-        notes:  t.notes ?? undefined,
-        status: (t.status as 'needsAction' | 'completed') ?? 'needsAction',
-        due:    t.due ?? undefined,
-        listId: list_id,
-    }));
+    return (res.data.items ?? []).map(t => {
+        const meta = decode_gentask_metadata(t.notes ?? undefined);
+        return {
+            id:       t.id!,
+            title:    t.title ?? '',
+            notes:    t.notes ?? undefined,
+            status:   (t.status as 'needsAction' | 'completed') ?? 'needsAction',
+            due:      t.due ?? undefined,
+            listId:   list_id,
+            sub_role: (meta?.sub_role as SubRole) ?? 'other',
+        };
+    });
 }
 
 /**
  * @function move_task
  * @description タスクをソースリストからターゲットリストへ移動する。
  * Google Tasks にはネイティブな移動 API がないため、insert + delete で実現する。
- * 移動によってタスク ID が変わることに注意。
+ * 移動後もメタデータの uuid は不変に保たれ、listId を新しいリストに更新する。
+ * Calendar の extendedProperties も新しい taskId / listId に patch する。
  * @param task           移動対象タスク
  * @param source_list_id 移動元リスト ID
  * @param target_list_id 移動先リスト ID
  * @param auth           Google OAuth2 クライアント
- * @param overrides      due / notes の上書き値（オプション）
+ * @param overrides      due の上書き値（オプション）
  * @returns 移動後の新しい GoogleTaskItem
  */
 async function move_task(
@@ -142,32 +153,80 @@ async function move_task(
     source_list_id: string,
     target_list_id: string,
     auth: any,
-    overrides?: Partial<Pick<GoogleTaskItem, 'due' | 'notes'>>
+    overrides?: Partial<Pick<GoogleTaskItem, 'due'>>
 ): Promise<GoogleTaskItem> {
     const tasks_client = google.tasks({ version: 'v1', auth });
 
+    // 既存メタデータを解析
+    const existing_meta = decode_gentask_metadata(task.notes);
+    const pure_notes    = strip_gentask_metadata(task.notes);
+
+    // スナップショット保存（移動前の状態を uuid キーで保存）
+    if (existing_meta) {
+        snapshot.save(
+            existing_meta.uuid,
+            task.id,
+            source_list_id,
+            { status: task.status, due: task.due, notes: task.notes, listId: source_list_id }
+        );
+    }
+
+    // メタデータの listId を移動先に更新して引き継ぐ
+    const updated_meta = existing_meta
+        ? encode_gentask_metadata({ ...existing_meta, listId: target_list_id })
+        : null;
+    const new_notes = updated_meta
+        ? (pure_notes ? `${pure_notes}\n${updated_meta}` : updated_meta)
+        : task.notes;
+
+    // 1. ターゲットリストに新規作成
     const inserted = await tasks_client.tasks.insert({
         tasklist: target_list_id,
         requestBody: {
             title:  task.title,
-            notes:  overrides?.notes ?? task.notes,
-            due:    overrides?.due   ?? task.due,
+            notes:  new_notes,
+            due:    overrides?.due ?? task.due,
             status: task.status,
         },
     });
+    const new_task_id = inserted.data.id!;
 
+    // 2. ソースリストから削除
     await tasks_client.tasks.delete({
         tasklist: source_list_id,
         task:     task.id,
     });
 
+    // 3. Calendar の extendedProperties を新しい taskId / listId に更新（失敗してもログのみ）
+    if (existing_meta) {
+        const cal_client = google.calendar({ version: 'v3', auth });
+        try {
+            await cal_client.events.patch({
+                calendarId: existing_meta.calendarId,
+                eventId:    existing_meta.eventId,
+                requestBody: {
+                    extendedProperties: {
+                        private: {
+                            gentask_uuid:   existing_meta.uuid,
+                            gentask_taskId: new_task_id,
+                            gentask_listId: target_list_id,
+                        },
+                    },
+                },
+            });
+        } catch (err) {
+            console.warn(`  [Move] Calendar 更新失敗 (uuid: ${existing_meta.uuid}):`, err);
+        }
+    }
+
     return {
-        id:     inserted.data.id!,
-        title:  inserted.data.title ?? task.title,
-        notes:  inserted.data.notes ?? undefined,
-        status: (inserted.data.status as 'needsAction' | 'completed') ?? 'needsAction',
-        due:    inserted.data.due ?? undefined,
-        listId: target_list_id,
+        id:       new_task_id,
+        title:    inserted.data.title ?? task.title,
+        notes:    inserted.data.notes ?? undefined,
+        status:   (inserted.data.status as 'needsAction' | 'completed') ?? 'needsAction',
+        due:      inserted.data.due ?? undefined,
+        listId:   target_list_id,
+        sub_role: task.sub_role,
     };
 }
 
@@ -189,11 +248,11 @@ export async function archive_current_week(
 ): Promise<boolean> {
     const tasks = await get_tasks_in_list(container.current, auth);
 
-    // CTASK のみ「投稿」タスクの完了を確認する
+    // CTASK のみ sub_role: 'post' タスクの完了を確認する
     if (mode === 'CTASK') {
-        const post_task = tasks.find(t => t.title.includes('投稿'));
+        const post_task = tasks.find(t => t.sub_role === 'post');
         if (!post_task) {
-            console.warn('  [Archive] 投稿タスクが見つかりません。スライドをスキップします。');
+            console.warn('  [Archive] sub_role: post のタスクが見つかりません。スライドをスキップします。');
             return false;
         }
         if (post_task.status !== 'completed') {
@@ -262,20 +321,20 @@ export async function schedule_promoted_tasks(
 ): Promise<void> {
     if (tasks.length === 0) return;
 
-    const cal_client    = google.calendar({ version: 'v3', auth });
-    const tasks_client  = google.tasks({ version: 'v1', auth });
-    const calendar_id   = process.env.GOOGLE_CALENDAR_ID!;
-    const next_mon      = get_next_monday();
+    const cal_client   = google.calendar({ version: 'v3', auth });
+    const tasks_client = google.tasks({ version: 'v1', auth });
+    const calendar_id  = process.env.GOOGLE_CALENDAR_ID!;
+    const next_mon     = get_next_monday();
 
     let default_slot = new Date(next_mon);
     default_slot.setHours(9, 0, 0, 0);
 
     for (const task of tasks) {
-        const schedule_key = get_schedule_key(task.title);
+        const schedule_slots = PLANNING_SCHEDULE[task.sub_role];
 
-        if (schedule_key) {
-            // マトリクス対応タスク：指定曜日×ブロック数で配置
-            for (const slot of PLANNING_SCHEDULE[schedule_key]) {
+        if (schedule_slots && schedule_slots.length > 0) {
+            // sub_role に対応するスロット（plot: 水・木、name: 金）に配置
+            for (const slot of schedule_slots) {
                 const slot_start = get_weekday_date(next_mon, slot.day);
                 slot_start.setHours(slot.hour, 0, 0, 0);
                 const slot_end = new Date(slot_start.getTime() + slot.blocks * 30 * 60_000);
@@ -283,11 +342,12 @@ export async function schedule_promoted_tasks(
                 const event_res = await cal_client.events.insert({
                     calendarId: calendar_id,
                     requestBody: {
-                        summary:     task.title,
-                        start:       { dateTime: slot_start.toISOString() },
-                        end:         { dateTime: slot_end.toISOString() },
+                        summary: task.title,
+                        start:   { dateTime: slot_start.toISOString() },
+                        end:     { dateTime: slot_end.toISOString() },
                         extendedProperties: {
                             private: {
+                                gentask_uuid:   decode_gentask_metadata(task.notes)?.uuid ?? generate_gentask_uuid(),
                                 gentask_taskId: task.id,
                                 gentask_listId: task.listId,
                             },
@@ -295,31 +355,41 @@ export async function schedule_promoted_tasks(
                     },
                 });
 
-                // タスクの notes に双方向リンクを追記
-                const event_id   = event_res.data.id!;
-                const prev_notes = task.notes ?? '';
+                // タスクの notes に UUID 付き双方向リンクを書き込む
+                const event_id     = event_res.data.id!;
+                const existing_meta = decode_gentask_metadata(task.notes);
+                const pure_notes   = strip_gentask_metadata(task.notes);
+                const new_uuid     = existing_meta?.uuid ?? generate_gentask_uuid();
+                const new_meta     = encode_gentask_metadata({
+                    uuid:       new_uuid,
+                    eventId:    event_id,
+                    calendarId: calendar_id,
+                    listId:     task.listId,
+                    sub_role:   task.sub_role,
+                });
                 await tasks_client.tasks.update({
                     tasklist: task.listId,
                     task:     task.id,
                     requestBody: {
                         id:    task.id,
-                        notes: `${prev_notes}\n[gentask:{"eventId":"${event_id}","calendarId":"${calendar_id}","listId":"${task.listId}"}]`,
+                        notes: pure_notes ? `${pure_notes}\n${new_meta}` : new_meta,
                     },
                 });
 
-                console.log(`  [Schedule] ${task.title} → ${slot_start.toISOString()}`);
+                console.log(`  [Schedule] ${task.title} (${task.sub_role}) → ${slot_start.toISOString()}`);
             }
         } else {
-            // デフォルト：月曜 09:00 から 30 分ブロックで順次配置
-            const slot_end = new Date(default_slot.getTime() + 30 * 60_000);
+            // 'post' と 'other': 翌月曜 09:00 から 30 分ブロックで順次配置
+            const slot_end  = new Date(default_slot.getTime() + 30 * 60_000);
             const event_res = await cal_client.events.insert({
                 calendarId: calendar_id,
                 requestBody: {
-                    summary:     task.title,
-                    start:       { dateTime: default_slot.toISOString() },
-                    end:         { dateTime: slot_end.toISOString() },
+                    summary: task.title,
+                    start:   { dateTime: default_slot.toISOString() },
+                    end:     { dateTime: slot_end.toISOString() },
                     extendedProperties: {
                         private: {
+                            gentask_uuid:   decode_gentask_metadata(task.notes)?.uuid ?? generate_gentask_uuid(),
                             gentask_taskId: task.id,
                             gentask_listId: task.listId,
                         },
@@ -327,18 +397,27 @@ export async function schedule_promoted_tasks(
                 },
             });
 
-            const event_id   = event_res.data.id!;
-            const prev_notes = task.notes ?? '';
+            const event_id     = event_res.data.id!;
+            const existing_meta = decode_gentask_metadata(task.notes);
+            const pure_notes   = strip_gentask_metadata(task.notes);
+            const new_uuid     = existing_meta?.uuid ?? generate_gentask_uuid();
+            const new_meta     = encode_gentask_metadata({
+                uuid:       new_uuid,
+                eventId:    event_id,
+                calendarId: calendar_id,
+                listId:     task.listId,
+                sub_role:   task.sub_role,
+            });
             await tasks_client.tasks.update({
                 tasklist: task.listId,
                 task:     task.id,
                 requestBody: {
                     id:    task.id,
-                    notes: `${prev_notes}\n[gentask:{"eventId":"${event_id}","calendarId":"${calendar_id}","listId":"${task.listId}"}]`,
+                    notes: pure_notes ? `${pure_notes}\n${new_meta}` : new_meta,
                 },
             });
 
-            console.log(`  [Schedule] ${task.title} → ${default_slot.toISOString()}`);
+            console.log(`  [Schedule] ${task.title} (${task.sub_role}) → ${default_slot.toISOString()}`);
             default_slot = slot_end;
         }
     }
@@ -364,7 +443,8 @@ export async function generate_next_plot(
     const { output } = await ai_engine.generate({
         prompt: `あなたは週刊漫画の連載管理AIです。「${episode_hint}」の次回エピソードのプロット作業を
 4つの 0.5sp（30分）タスクに分解してください。
-各タスクは PTASK（企画・言語化）として、具体的で実行可能なタイトルと詳細を持つこと。`,
+各タスクは PTASK（企画・言語化）として、具体的で実行可能なタイトルと詳細を持つこと。
+sub_role は必ず "plot" に設定すること（これらはすべてプロット作業タスクのため）。`,
         output: { schema: z.array(task_schema) },
     });
 

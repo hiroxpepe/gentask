@@ -6,7 +6,12 @@ import { validate_env } from '../lib/env';
 import { google } from 'googleapis';
 import { createOAuthClient } from '../src/google';
 import { snapshot } from '../lib/snapshot';
-import { sync_action_schema, type sync_input_item, type sync_action } from '../lib/types';
+import {
+    sync_action_schema,
+    type sync_input_item,
+    type sync_action,
+    decode_gentask_metadata,
+} from '../lib/types';
 
 const ai_engine = genkit({
     plugins: [googleAI({ apiKey: process.env.GCP_VERTEX_AI_API_KEY })],
@@ -95,6 +100,17 @@ export class GoogleSyncService {
 
             switch (action.action) {
                 case 'complete': {
+                    // 操作前にスナップショットを保存（undo 用）
+                    const before = await tasks_client.tasks.get({ tasklist: list_id, task: task_id });
+                    const meta   = decode_gentask_metadata(before.data.notes);
+                    if (meta) {
+                        snapshot.save(meta.uuid, task_id, list_id, {
+                            title:  before.data.title  ?? '',
+                            notes:  before.data.notes  ?? '',
+                            status: before.data.status ?? 'needsAction',
+                            due:    before.data.due    ?? undefined,
+                        });
+                    }
                     await tasks_client.tasks.update({
                         tasklist: list_id,
                         task:     task_id,
@@ -105,6 +121,16 @@ export class GoogleSyncService {
 
                 case 'reschedule': {
                     if (!action.newDueDate) break;
+                    const before = await tasks_client.tasks.get({ tasklist: list_id, task: task_id });
+                    const meta   = decode_gentask_metadata(before.data.notes);
+                    if (meta) {
+                        snapshot.save(meta.uuid, task_id, list_id, {
+                            title:  before.data.title  ?? '',
+                            notes:  before.data.notes  ?? '',
+                            status: before.data.status ?? 'needsAction',
+                            due:    before.data.due    ?? undefined,
+                        });
+                    }
                     await tasks_client.tasks.update({
                         tasklist: list_id,
                         task:     task_id,
@@ -120,6 +146,15 @@ export class GoogleSyncService {
                         tasklist: list_id,
                         task:     task_id,
                     });
+                    const meta    = decode_gentask_metadata(current.data.notes);
+                    if (meta) {
+                        snapshot.save(meta.uuid, task_id, list_id, {
+                            title:  current.data.title  ?? '',
+                            notes:  current.data.notes  ?? '',
+                            status: current.data.status ?? 'needsAction',
+                            due:    current.data.due    ?? undefined,
+                        });
+                    }
                     const prev    = current.data.notes ?? '';
                     const updated = prev
                         ? `${prev}\n\n---\n${new Date().toISOString()}: ${action.note}`
@@ -133,19 +168,23 @@ export class GoogleSyncService {
                 }
 
                 case 'undo': {
-                    // ⚠️ snapshot.ts の url フィールドを listId として読み替えている
-                    const snap_map = snapshot.restore(task_id);
-                    if (snap_map.size === 0) {
-                        console.warn(`  [Undo] No snapshot found for task: ${task_id}`);
+                    // UUID を notes から読み取り、UUID ベースでスナップショットを復元
+                    const current = await tasks_client.tasks.get({ tasklist: list_id, task: task_id });
+                    const meta    = decode_gentask_metadata(current.data.notes);
+                    if (!meta) {
+                        console.warn(`  [Undo] No gentask metadata in notes for task: ${task_id}`);
                         break;
                     }
-                    for (const [, snap] of snap_map) {
-                        await tasks_client.tasks.update({
-                            tasklist: list_id,
-                            task:     task_id,
-                            requestBody: { id: task_id, ...snap.state },
-                        });
+                    const snap = snapshot.restore(meta.uuid);
+                    if (!snap) {
+                        console.warn(`  [Undo] No snapshot found for uuid: ${meta.uuid}`);
+                        break;
                     }
+                    await tasks_client.tasks.update({
+                        tasklist: list_id,
+                        task:     task_id,
+                        requestBody: { id: task_id, ...snap.state },
+                    });
                     break;
                 }
             }
@@ -167,14 +206,15 @@ export async function main(
         const tasks_client = google.tasks({ version: 'v1', auth });
         const calendar_id  = process.env.GOOGLE_CALENDAR_ID!;
 
-        // 1. gentask リンク付きカレンダーイベントを2週間分取得
+        // 1. gentask UUID リンク付きカレンダーイベントを GENTASK_SYNC_WINDOW_DAYS 日分取得
         console.log('🔍 Fetching linked Google Calendar events...');
-        const two_weeks_ago = new Date(Date.now() - 14 * 24 * 60 * 60_000).toISOString();
+        const sync_days     = parseInt(process.env.GENTASK_SYNC_WINDOW_DAYS ?? '365', 10);
+        const window_start  = new Date(Date.now() - sync_days * 24 * 60 * 60_000).toISOString();
 
         const events_res = await cal_client.events.list({
             calendarId:              calendar_id,
-            timeMin:                 two_weeks_ago,
-            privateExtendedProperty: 'gentask_taskId',
+            timeMin:                 window_start,
+            privateExtendedProperty: 'gentask_uuid',
             singleEvents:            true,
             orderBy:                 'startTime',
         });
@@ -202,7 +242,13 @@ export async function main(
                 task:     task_id,
             });
 
-            const current_status = task_res.data.status === 'completed' ? 100 : 0;
+            // Phase 9: 完了済みタスクはゾンビ化防止のためスキップ
+            if (task_res.data.status === 'completed') {
+                console.log(`  [Skip] Completed task skipped: ${task_res.data.title}`);
+                continue;
+            }
+
+            const current_status = 0;
             list_map.set(task_id, list_id);
 
             sync_inputs.push({

@@ -15,13 +15,15 @@ const {
     mock_tasks_update,
     mock_cal_insert,
     mock_generate,
+    mock_snapshot_save,
 } = vi.hoisted(() => ({
-    mock_tasks_list:   vi.fn(),
-    mock_tasks_insert: vi.fn(),
-    mock_tasks_delete: vi.fn(),
-    mock_tasks_update: vi.fn(),
-    mock_cal_insert:   vi.fn(),
-    mock_generate:     vi.fn(),
+    mock_tasks_list:    vi.fn(),
+    mock_tasks_insert:  vi.fn(),
+    mock_tasks_delete:  vi.fn(),
+    mock_tasks_update:  vi.fn(),
+    mock_cal_insert:    vi.fn(),
+    mock_generate:      vi.fn(),
+    mock_snapshot_save: vi.fn(),
 }));
 
 // ─── モック設定 ───────────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ vi.mock('googleapis', () => ({
 }));
 
 vi.mock('../src/google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
+vi.mock('../lib/snapshot', () => ({ snapshot: { save: mock_snapshot_save, restore: vi.fn() } }));
 
 vi.mock('genkit', async () => {
     const zod = await import('zod');
@@ -74,15 +77,26 @@ import {
 } from './slide';
 
 /**
+ * テスト用のメタデータ埋め込み notes を生成する。
+ * @param sub_role タスクの工程ロール
+ * @param list_id  タスクのリスト ID
+ */
+function make_meta_notes(sub_role: string, list_id = 'list-current'): string {
+    return `[gentask:{"uuid":"test-uuid-${sub_role}","eventId":"evt-1","calendarId":"cal-1","listId":"${list_id}","sub_role":"${sub_role}"}]`;
+}
+
+/**
  * GoogleTaskItem のファクトリ関数。テスト用にデフォルト値付きで生成する。
  */
 function make_task(
     id: string,
     title: string,
     listId: string,
-    status: 'needsAction' | 'completed' = 'needsAction'
+    status: 'needsAction' | 'completed' = 'needsAction',
+    sub_role: GoogleTaskItem['sub_role'] = 'other',
+    notes?: string
 ): GoogleTaskItem {
-    return { id, title, listId, status };
+    return { id, title, listId, status, sub_role, notes };
 }
 
 // ─── get_next_monday テスト ───────────────────────────────────────────────────
@@ -142,13 +156,11 @@ describe('archive_current_week', () => {
     const CONTAINER = { current: 'list-current', next: 'list-next', done: 'list-done' };
 
     it('CTASK: 投稿タスクが完了済みなら true を返して全タスクを移動する', async () => {
-        const tasks = [
-            make_task('t1', 'エディット作業', 'list-current'),
-            make_task('t2', '投稿', 'list-current', 'completed'),
-        ];
-        mock_tasks_list.mockResolvedValue({ data: { items: tasks.map(t => ({
-            id: t.id, title: t.title, status: t.status,
-        })) } });
+        const post_notes = make_meta_notes('post');
+        mock_tasks_list.mockResolvedValue({ data: { items: [
+            { id: 't1', title: 'エディット作業', status: 'needsAction' },
+            { id: 't2', title: '投稿', status: 'completed', notes: post_notes },
+        ] } });
         mock_tasks_insert.mockResolvedValue({ data: { id: 'new-id', title: 'dummy', status: 'needsAction' } });
         mock_tasks_delete.mockResolvedValue({});
 
@@ -160,13 +172,11 @@ describe('archive_current_week', () => {
     });
 
     it('CTASK: 投稿タスクが未完了なら false を返して移動しない', async () => {
-        const tasks = [
-            make_task('t1', 'エディット作業', 'list-current'),
-            make_task('t2', '投稿', 'list-current', 'needsAction'),
-        ];
-        mock_tasks_list.mockResolvedValue({ data: { items: tasks.map(t => ({
-            id: t.id, title: t.title, status: t.status,
-        })) } });
+        const post_notes = make_meta_notes('post');
+        mock_tasks_list.mockResolvedValue({ data: { items: [
+            { id: 't1', title: 'エディット作業', status: 'needsAction' },
+            { id: 't2', title: '投稿', status: 'needsAction', notes: post_notes },
+        ] } });
 
         const result = await archive_current_week(CONTAINER, {}, 'CTASK');
 
@@ -272,17 +282,17 @@ describe('schedule_promoted_tasks', () => {
         vi.useRealTimers();
     });
 
-    it('「プロット」を含むタスク → 水・木の 2 イベントが作成される', async () => {
+    it('sub_role: plot のタスク → 水・木の 2 イベントが作成される', async () => {
         mock_cal_insert.mockResolvedValue({ data: { id: 'event-1' } });
         mock_tasks_update.mockResolvedValue({ data: {} });
 
-        const tasks = [make_task('t1', '第42話のプロット作成', 'list-c')];
+        const tasks = [make_task('t1', '第42話のプロット作成', 'list-c', 'needsAction', 'plot')];
         await schedule_promoted_tasks(tasks, {});
 
         expect(mock_cal_insert).toHaveBeenCalledTimes(2); // 水, 木
     });
 
-    it('マトリクス対象外タスク → 月曜 09:00 から順次配置', async () => {
+    it('sub_role: other のタスク → 月曜 09:00 から順次配置', async () => {
         mock_cal_insert
             .mockResolvedValueOnce({ data: { id: 'event-1' } })
             .mockResolvedValueOnce({ data: { id: 'event-2' } });

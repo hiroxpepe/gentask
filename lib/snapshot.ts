@@ -6,39 +6,45 @@ const SNAPSHOT_DIR = path.join(os.homedir(), '.gentask', 'snapshots');
 
 /**
  * @interface TaskSnapshot
- * @description 1 回のスナップショット記録。タスクまたは詳細の変更前状態を保持する。
+ * @description 1 回のスナップショット記録。タスクの変更前状態を保持する。
+ * uuid フィールドにより、move_task 後もスナップショットを追跡可能。
  */
 export interface TaskSnapshot {
-    taskId:    string;
-    url:       string;    // スナップショット対象の Graph API エンドポイント
-    timestamp: string;    // ISO 8601
+    uuid:      string;  // 不変 UUID（move_task を経ても変わらない）
+    taskId:    string;  // 記録時点の Google Tasks タスク ID（変わりうる）
+    listId:    string;  // 記録時点のリスト ID
+    timestamp: string;  // ISO 8601
     state:     Record<string, unknown>;
 }
 
 /**
  * @namespace snapshot
- * @description Planner タスクの変更前状態を ~/.gentask/snapshots/ にローカル JSON で記録する。
- * PATCH 操作の直前に save() を呼び出すことで、undo トリガー時に 1 つ前の状態を復元できる。
+ * @description タスクの変更前状態を ~/.gentask/snapshots/ にローカル JSON で記録する。
+ * 各操作の直前に save() を呼び出すことで、undo トリガー時に 1 つ前の状態を復元できる。
+ * ファイル名は不変 UUID をキーにするため、move_task によるタスク ID 変更後も追跡可能。
  */
 export const snapshot = {
     /**
      * @method save
      * @description タスク状態をスナップショットとして追記保存する。
-     * @param taskId - Planner タスク ID
-     * @param url    - 対象エンドポイント URL（タスク本体 or 詳細）
-     * @param state  - 保存する現在状態オブジェクト
+     * ファイル名は uuid をキーにする（taskId ではない）。
+     * @param uuid   不変 UUID
+     * @param taskId 現在の Google Tasks タスク ID
+     * @param listId 現在のリスト ID
+     * @param state  保存する現在状態オブジェクト
      */
-    save(taskId: string, url: string, state: Record<string, unknown>): void {
+    save(uuid: string, taskId: string, listId: string, state: Record<string, unknown>): void {
         fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
 
         const entry: TaskSnapshot = {
+            uuid,
             taskId,
-            url,
+            listId,
             timestamp: new Date().toISOString(),
             state,
         };
 
-        const file = path.join(SNAPSHOT_DIR, `${taskId}.json`);
+        const file = path.join(SNAPSHOT_DIR, `${uuid}.json`);
         let history: TaskSnapshot[] = [];
         if (fs.existsSync(file)) {
             history = JSON.parse(fs.readFileSync(file, 'utf8')) as TaskSnapshot[];
@@ -49,34 +55,30 @@ export const snapshot = {
 
     /**
      * @method restore
-     * @description 指定タスクの直前スナップショット一覧を返す（URL ごとの最新エントリ）。
-     * 呼び出し側はこの結果を使い、各 URL に PATCH を発行してロールバックを実施する。
-     * @param taskId - Planner タスク ID
-     * @returns URL → スナップショットのマップ。スナップショット未存在なら空 Map
+     * @description 指定 UUID の直前スナップショット（最新）を返す。
+     * 呼び出し側はこの結果を使い、tasks.tasks.update でロールバックを実施する。
+     * @param uuid 不変 UUID
+     * @returns 最新の TaskSnapshot、存在しなければ null
      */
-    restore(taskId: string): Map<string, TaskSnapshot> {
-        const file = path.join(SNAPSHOT_DIR, `${taskId}.json`);
-        if (!fs.existsSync(file)) return new Map();
+    restore(uuid: string): TaskSnapshot | null {
+        const file = path.join(SNAPSHOT_DIR, `${uuid}.json`);
+        if (!fs.existsSync(file)) return null;
 
         const history = JSON.parse(fs.readFileSync(file, 'utf8')) as TaskSnapshot[];
-        // URL ごとに最新エントリを 1 つだけ取得する（配列末尾が最新）
-        const latest_map = new Map<string, TaskSnapshot>();
-        for (const entry of history) {
-            latest_map.set(entry.url, entry);
-        }
-        return latest_map;
+        if (history.length === 0) return null;
+        return history[history.length - 1]; // 末尾が最新
     },
 
     /**
      * @method list_snapshots
      * @description 保存済みスナップショットを返す。
-     * @param taskId - 省略時は全タスク分を返す
+     * @param uuid 省略時は全タスク分を返す
      */
-    list_snapshots(taskId?: string): TaskSnapshot[] {
+    list_snapshots(uuid?: string): TaskSnapshot[] {
         if (!fs.existsSync(SNAPSHOT_DIR)) return [];
 
-        if (taskId) {
-            const file = path.join(SNAPSHOT_DIR, `${taskId}.json`);
+        if (uuid) {
+            const file = path.join(SNAPSHOT_DIR, `${uuid}.json`);
             if (!fs.existsSync(file)) return [];
             return JSON.parse(fs.readFileSync(file, 'utf8')) as TaskSnapshot[];
         }

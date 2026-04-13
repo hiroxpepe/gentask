@@ -5,7 +5,12 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import { createOAuthClient } from '../src/google';
 import { GoogleContainerManager } from '../src/google-container-manager';
-import { task_schema, type gen_task } from '../lib/types';
+import {
+    task_schema,
+    type gen_task,
+    generate_gentask_uuid,
+    encode_gentask_metadata,
+} from '../lib/types';
 import { validate_env } from '../lib/env';
 
 const ai_engine = genkit({
@@ -27,8 +32,16 @@ export const task_flow = ai_engine.defineFlow(
     },
     async (input_subject) => {
         const { output } = await ai_engine.generate({
-            prompt: `あなたは超一流のマネージャーです。「${input_subject}」という目標を達成するために必要な具体的タスクを、
-                    P(戦略)・T(技術)・C(制作)・A(事務) の全方位から網羅的に分解して出力してください。`,
+            prompt: `あなたは週刊漫画連載の超一流マネージャーです。「${input_subject}」を達成するために必要な具体的タスクを、
+P(戦略)・T(技術)・C(制作)・A(事務) の全方位から網羅的に分解して出力してください。
+
+sub_role の設定ルール（厳守）：
+- プロット作業（脚本・シナリオ・構成・言語化）→ "plot"
+- ネーム・ラフ・コマ割り作業 → "name"
+- 投稿・アップロード・公開作業（CTASK のみ） → "post"
+- 上記以外のすべての作業 → "other"
+
+sub_role は必ず上記 4 種類のいずれかを設定すること。タイトルに特定の単語が含まれるかではなく、作業の本質に基づいて分類すること。`,
             output: { schema: z.array(task_schema) },
         });
         if (!output) throw new Error('AI failed to generate valid task sequence.');
@@ -59,19 +72,20 @@ if (is_main) {
         const generated_tasks = await task_flow(input_subject);
 
         // 2. Google Tasks + Calendar へ展開
-        const auth            = createOAuthClient();
-        const manager         = new GoogleContainerManager();
-        const tasks_client    = google.tasks({ version: 'v1', auth });
-        const cal_client      = google.calendar({ version: 'v3', auth });
-        const calendar_id     = process.env.GOOGLE_CALENDAR_ID!;
+        const auth         = createOAuthClient();
+        const manager      = new GoogleContainerManager();
+        const tasks_client = google.tasks({ version: 'v1', auth });
+        const cal_client   = google.calendar({ version: 'v3', auth });
+        const calendar_id  = process.env.GOOGLE_CALENDAR_ID!;
 
         for (const task of generated_tasks) {
             const bucket: 'current' | 'next' =
                 (task.bucket as 'current' | 'next' | undefined) ??
                 (task.mode === 'PTASK' ? 'next' : 'current');
 
-            const container = await manager.get_container(task.mode, auth);
-            const list_id   = container[bucket];
+            const container    = await manager.get_container(task.mode, auth);
+            const list_id      = container[bucket];
+            const gentask_uuid = generate_gentask_uuid(); // 不変 UUID を先に生成
 
             // Google Tasks にタスク作成
             const task_res = await tasks_client.tasks.insert({
@@ -90,12 +104,13 @@ if (is_main) {
             const event_res = await cal_client.events.insert({
                 calendarId: calendar_id,
                 requestBody: {
-                    summary:     `[${task.mode}] ${task.title}`,
+                    summary:     `[${task.mode}/${task.sub_role}] ${task.title}`,
                     description: task.description,
                     start: { dateTime: start_dt.toISOString() },
                     end:   { dateTime: end_dt.toISOString() },
                     extendedProperties: {
                         private: {
+                            gentask_uuid:   gentask_uuid, // 不変 UUID
                             gentask_taskId: task_id,
                             gentask_listId: list_id,
                         },
@@ -104,18 +119,25 @@ if (is_main) {
             });
             const event_id = event_res.data.id!;
 
-            // タスクの notes に双方向リンクを追記
+            // タスクの notes に UUID 付き双方向リンクを埋め込む
+            const metadata = encode_gentask_metadata({
+                uuid:       gentask_uuid,
+                eventId:    event_id,
+                calendarId: calendar_id,
+                listId:     list_id,
+                sub_role:   task.sub_role ?? 'other',
+            });
             await tasks_client.tasks.update({
                 tasklist: list_id,
                 task:     task_id,
                 requestBody: {
                     id:    task_id,
                     title: task.title,
-                    notes: `${task.description}\n[gentask:{"eventId":"${event_id}","calendarId":"${calendar_id}","listId":"${list_id}"}]`,
+                    notes: `${task.description}\n${metadata}`,
                 },
             });
 
-            console.log(`  ✅ ${task.mode} | ${task.title}`);
+            console.log(`  ✅ [${task.mode}/${task.sub_role}] ${task.title} (uuid: ${gentask_uuid})`);
         }
 
         console.log(`\n✨ Successfully deployed ${generated_tasks.length} tasks.`);

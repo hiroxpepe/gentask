@@ -1,4 +1,5 @@
 import { z } from 'genkit';
+import { v4 as uuidv4 } from 'uuid';
 
 // ─── Phase 3: バケット管理 ────────────────────────────────────────────────────
 
@@ -19,6 +20,13 @@ export const task_schema = z.object({
       - CTASK: 制作・デザイン・手作業・コンテンツ作成（低エネルギー）
       - ATASK: 運用・管理・事務・ルーチン（随時）`),
 
+    sub_role: z.enum(['plot', 'name', 'post', 'other']).default('other')
+        .describe(`タスクの工程ロール（スケジューリングとスライド判定に使用）：
+      - plot:  プロット作業（PTASK。水14:00・木14:00 に自動配置）
+      - name:  ネーム/ラフ作業（PTASK。金14:00 に自動配置）
+      - post:  投稿作業（CTASK。スライド前の完了チェック対象）
+      - other: 上記以外（翌月曜 09:00 から 30 分ブロック順次配置）`),
+
     priority: z.number().min(1).max(9).default(5)
         .describe('Planner API 優先度。1:最優先（緊急）, 3:重要, 5:普通, 9:低。'),
 
@@ -38,6 +46,77 @@ export const task_schema = z.object({
 });
 
 export type gen_task = z.infer<typeof task_schema>;
+
+// ─── Phase 7-8: Gentask メタデータ（双方向リンク + UUID 永続 ID） ────────────
+
+/** notes 埋め込みメタデータのタグプレフィックス */
+export const GENTASK_TAG = '[gentask:';
+
+/**
+ * @interface GentaskMetadata
+ * @description Google Tasks の notes フィールド末尾に埋め込む Gentask 管理メタデータ。
+ * uuid は不変のため、move_task によるタスク ID 変更後も追跡に使用できる。
+ */
+export interface GentaskMetadata {
+    uuid:       string; // 不変 UUID（v4）。move_task を経ても変わらない。
+    eventId:    string; // Google Calendar イベント ID
+    calendarId: string; // Google Calendar ID
+    listId:     string; // Google Tasks リスト ID（move_task 後に更新される）
+    sub_role:   string; // タスクの工程ロール（'plot' | 'name' | 'post' | 'other'）
+}
+
+/** Gentask 管理用の不変 UUID を生成する。 */
+export function generate_gentask_uuid(): string {
+    return uuidv4();
+}
+
+/**
+ * @function encode_gentask_metadata
+ * @description GentaskMetadata を notes 埋め込み文字列にシリアライズする。
+ * @returns `[gentask:{...}]` 形式の文字列
+ */
+export function encode_gentask_metadata(metadata: GentaskMetadata): string {
+    return `${GENTASK_TAG}${JSON.stringify(metadata)}]`;
+}
+
+/**
+ * @function decode_gentask_metadata
+ * @description notes 文字列から GentaskMetadata を抽出する。
+ * JSON が壊れている・タグが存在しない場合は null を返す（クラッシュしない）。
+ */
+export function decode_gentask_metadata(notes: string | undefined | null): GentaskMetadata | null {
+    if (!notes) return null;
+    try {
+        const tag_start = notes.lastIndexOf(GENTASK_TAG);
+        if (tag_start === -1) return null;
+
+        const json_start = tag_start + GENTASK_TAG.length;
+        const json_end   = notes.indexOf(']', json_start);
+        if (json_end === -1) return null;
+
+        const json_str = notes.slice(json_start, json_end);
+        const parsed   = JSON.parse(json_str) as Partial<GentaskMetadata>;
+
+        if (!parsed.uuid || !parsed.eventId || !parsed.calendarId || !parsed.listId) {
+            return null;
+        }
+        return parsed as GentaskMetadata;
+    } catch {
+        console.warn('[Gentask] メタデータの解析に失敗しました。notes を確認してください。');
+        return null;
+    }
+}
+
+/**
+ * @function strip_gentask_metadata
+ * @description notes から Gentask メタデータタグを除去した純粋なテキストを返す。
+ */
+export function strip_gentask_metadata(notes: string | undefined | null): string {
+    if (!notes) return '';
+    const tag_start = notes.lastIndexOf(GENTASK_TAG);
+    if (tag_start === -1) return notes;
+    return notes.slice(0, tag_start).trimEnd();
+}
 
 // ─── Phase 2: Google Calendar ↔ Google Tasks 同期 ───────────────────────────
 
