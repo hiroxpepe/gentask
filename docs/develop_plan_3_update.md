@@ -1,5 +1,7 @@
 # Gentask 強化改修計画 — develop_plan_3
 
+> ⚠️ **HISTORICAL DOCUMENT — All phases described herein are now fully implemented.**
+
 > **根拠ドキュメント:** `docs/05_memo.md`（アーキテクチャ忖度ゼロレビュー）
 >
 > **目的:** `05_memo.md` が指摘した 5 つの致命的構造問題を根本解決し、CLIの安定稼働を完成させた後、GCP による完全無人化を実現する。

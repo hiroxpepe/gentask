@@ -53,16 +53,16 @@ export type gen_task = z.infer<typeof task_schema>;
 export const GENTASK_TAG = '[gentask:';
 
 /**
- * @interface GentaskMetadata
+ * @interface gentask_metadata
  * @description Google Tasks の notes フィールド末尾に埋め込む Gentask 管理メタデータ。
  * uuid は不変のため、move_task によるタスク ID 変更後も追跡に使用できる。
  */
-export interface GentaskMetadata {
-    uuid:       string; // 不変 UUID（v4）。move_task を経ても変わらない。
-    eventId:    string; // Google Calendar イベント ID
-    calendarId: string; // Google Calendar ID
-    listId:     string; // Google Tasks リスト ID（move_task 後に更新される）
-    sub_role:   string; // タスクの工程ロール（'plot' | 'name' | 'post' | 'other'）
+export interface gentask_metadata {
+    uuid:        string; // 不変 UUID（v4）。move_task を経ても変わらない。
+    event_id:    string; // Google Calendar イベント ID
+    calendar_id: string; // Google Calendar ID
+    list_id:     string; // Google Tasks リスト ID（move_task 後に更新される）
+    sub_role:    string; // タスクの工程ロール（'plot' | 'name' | 'post' | 'other'）
 }
 
 /** Gentask 管理用の不変 UUID を生成する。 */
@@ -72,19 +72,19 @@ export function generate_gentask_uuid(): string {
 
 /**
  * @function encode_gentask_metadata
- * @description GentaskMetadata を notes 埋め込み文字列にシリアライズする。
+ * @description gentask_metadata を notes 埋め込み文字列にシリアライズする。
  * @returns `[gentask:{...}]` 形式の文字列
  */
-export function encode_gentask_metadata(metadata: GentaskMetadata): string {
+export function encode_gentask_metadata(metadata: gentask_metadata): string {
     return `${GENTASK_TAG}${JSON.stringify(metadata)}]`;
 }
 
 /**
  * @function decode_gentask_metadata
- * @description notes 文字列から GentaskMetadata を抽出する。
+ * @description notes 文字列から gentask_metadata を抽出する。
  * JSON が壊れている・タグが存在しない場合は null を返す（クラッシュしない）。
  */
-export function decode_gentask_metadata(notes: string | undefined | null): GentaskMetadata | null {
+export function decode_gentask_metadata(notes: string | undefined | null): gentask_metadata | null {
     if (!notes) return null;
     try {
         const tag_start = notes.lastIndexOf(GENTASK_TAG);
@@ -95,12 +95,12 @@ export function decode_gentask_metadata(notes: string | undefined | null): Genta
         if (json_end === -1) return null;
 
         const json_str = notes.slice(json_start, json_end);
-        const parsed   = JSON.parse(json_str) as Partial<GentaskMetadata>;
+        const parsed   = JSON.parse(json_str) as Partial<gentask_metadata>;
 
-        if (!parsed.uuid || !parsed.eventId || !parsed.calendarId || !parsed.listId) {
+        if (!parsed.uuid || !parsed.event_id || !parsed.calendar_id || !parsed.list_id) {
             return null;
         }
-        return parsed as GentaskMetadata;
+        return parsed as gentask_metadata;
     } catch {
         console.warn('[Gentask] メタデータの解析に失敗しました。notes を確認してください。');
         return null;
@@ -122,7 +122,7 @@ export function strip_gentask_metadata(notes: string | undefined | null): string
 
 /** AI が判定した同期アクション */
 export const sync_action_schema = z.object({
-    taskId: z.string()
+    task_id: z.string()
         .describe('操作対象の Google Tasks タスク ID'),
 
     action: z.enum(['complete', 'reschedule', 'add_note', 'buffer_consumed', 'no_change', 'undo'])
@@ -137,7 +137,7 @@ export const sync_action_schema = z.object({
     note: z.string().optional()
         .describe('add_note / buffer_consumed の場合に Planner へ追記するテキスト'),
 
-    newDueDate: z.string().optional()
+    new_due_date: z.string().optional()
         .describe('reschedule の場合の新しい期限（ISO 8601 形式）'),
 });
 
@@ -145,11 +145,11 @@ export type sync_action = z.infer<typeof sync_action_schema>;
 
 /** sync_flow への入力 — Google Calendar イベントの現在状態をまとめたもの */
 export type sync_input_item = {
-    eventId:       string;   // Google Calendar イベント ID
-    taskId:        string;   // Google Tasks タスク ID
-    listId:        string;   // Google Tasks リスト ID
-    subject:       string;
-    bodyContent:   string;
-    currentStatus: number;   // 0=未完了, 100=完了（Google Tasks は二値）
+    event_id:       string;   // Google Calendar イベント ID
+    task_id:        string;   // Google Tasks タスク ID
+    list_id:        string;   // Google Tasks リスト ID
+    subject:        string;
+    body_content:   string;
+    current_status: number;   // 0=未完了, 100=完了（Google Tasks は二値）
 };
 

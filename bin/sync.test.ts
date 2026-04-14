@@ -45,35 +45,35 @@ vi.mock('googleapis', () => ({
     },
 }));
 
-vi.mock('../src/google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
+vi.mock('../src/google', () => ({ create_oauth_client: vi.fn(() => ({})) }));
 vi.mock('../lib/snapshot', () => ({ snapshot: { restore: mock_restore, save: mock_save } }));
 
 // ─── テスト対象 ───────────────────────────────────────────────────────────────
 
-import { GoogleSyncService } from './sync';
+import { google_sync_service } from './sync';
 
 /** テスト用の有効なメタデータ埋め込み notes を生成する */
 const make_meta_notes = (uuid: string) =>
-    `[gentask:{"uuid":"${uuid}","eventId":"evt-1","calendarId":"cal-1","listId":"list-001","sub_role":"other"}]`;
+    `[gentask:{"uuid":"${uuid}","event_id":"evt-1","calendar_id":"cal-1","list_id":"list-001","sub_role":"other"}]`;
 
-describe('GoogleSyncService.apply_actions', () => {
+describe('google_sync_service.apply_actions', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
     it('no_change はスキップされ update が呼ばれない', async () => {
-        const svc = new GoogleSyncService();
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-001', action: 'no_change' }],
+            [{ task_id: 'task-001', action: 'no_change' }],
             new Map([['task-001', 'list-001']])
         );
         expect(mock_tasks_update).not.toHaveBeenCalled();
     });
 
-    it('list_map に存在しない taskId はスキップされ update が呼ばれない', async () => {
-        const svc = new GoogleSyncService();
+    it('list_map に存在しない task_id はスキップされ update が呼ばれない', async () => {
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'unknown-task', action: 'complete' }],
+            [{ task_id: 'unknown-task', action: 'complete' }],
             new Map()
         );
         expect(mock_tasks_update).not.toHaveBeenCalled();
@@ -85,9 +85,9 @@ describe('GoogleSyncService.apply_actions', () => {
         } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new GoogleSyncService();
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-001', action: 'complete' }],
+            [{ task_id: 'task-001', action: 'complete' }],
             new Map([['task-001', 'list-001']])
         );
 
@@ -98,15 +98,15 @@ describe('GoogleSyncService.apply_actions', () => {
         }));
     });
 
-    it('reschedule は newDueDate で update する', async () => {
+    it('reschedule は new_due_date で update する', async () => {
         mock_tasks_get.mockResolvedValueOnce({ data: {
             notes: make_meta_notes('uuid-002'), title: 'Task', status: 'needsAction',
         } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new GoogleSyncService();
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-002', action: 'reschedule', newDueDate: '2026-04-10T00:00:00Z' }],
+            [{ task_id: 'task-002', action: 'reschedule', new_due_date: '2026-04-10T00:00:00Z' }],
             new Map([['task-002', 'list-002']])
         );
 
@@ -115,10 +115,10 @@ describe('GoogleSyncService.apply_actions', () => {
         }));
     });
 
-    it('reschedule で newDueDate がない場合は update しない', async () => {
-        const svc = new GoogleSyncService();
+    it('reschedule で new_due_date がない場合は update しない', async () => {
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-003', action: 'reschedule' }],
+            [{ task_id: 'task-003', action: 'reschedule' }],
             new Map([['task-003', 'list-003']])
         );
         expect(mock_tasks_update).not.toHaveBeenCalled();
@@ -131,9 +131,9 @@ describe('GoogleSyncService.apply_actions', () => {
         } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new GoogleSyncService();
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-004', action: 'add_note', note: '新しいメモ' }],
+            [{ task_id: 'task-004', action: 'add_note', note: '新しいメモ' }],
             new Map([['task-004', 'list-004']])
         );
 
@@ -149,9 +149,9 @@ describe('GoogleSyncService.apply_actions', () => {
         } });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new GoogleSyncService();
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-005', action: 'buffer_consumed', note: '神回だった' }],
+            [{ task_id: 'task-005', action: 'buffer_consumed', note: '神回だった' }],
             new Map([['task-005', 'list-005']])
         );
 
@@ -166,20 +166,20 @@ describe('GoogleSyncService.apply_actions', () => {
         } });
         mock_restore.mockReturnValueOnce({
             uuid,
-            taskId:    'task-006',
-            listId:    'list-006',
+            task_id:   'task-006',
+            list_id:   'list-006',
             timestamp: '2026-03-30T10:00:00Z',
             state:     { status: 'needsAction', due: '2026-04-01T00:00:00Z' },
         });
         mock_tasks_update.mockResolvedValueOnce({ data: {} });
 
-        const svc = new GoogleSyncService();
+        const svc = new google_sync_service();
         await svc.apply_actions(
-            [{ taskId: 'task-006', action: 'undo' }],
+            [{ task_id: 'task-006', action: 'undo' }],
             new Map([['task-006', 'list-006']])
         );
 
-        expect(mock_restore).toHaveBeenCalledWith(uuid); // UUID で検索（taskId ではない）
+        expect(mock_restore).toHaveBeenCalledWith(uuid); // UUID で検索（task_id ではない）
         expect(mock_tasks_update).toHaveBeenCalled();
     });
 });

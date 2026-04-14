@@ -1,6 +1,6 @@
 /**
- * @file src/google-container-manager.test.ts
- * @description GoogleContainerManager の単体テスト。
+ * @file src/google_container_manager.test.ts
+ * @description google_container_manager の単体テスト。
  * fs と googleapis をモックして、リストの取得・作成・キャッシュ動作を検証する。
  */
 
@@ -51,13 +51,13 @@ vi.mock('googleapis', () => ({
     },
 }));
 
-vi.mock('./google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
+vi.mock('./google', () => ({ create_oauth_client: vi.fn(() => ({})) }));
 
 // ─── テスト ───────────────────────────────────────────────────────────────────
 
-import { GoogleContainerManager } from './google-container-manager';
+import { google_container_manager } from './google_container_manager';
 
-describe('GoogleContainerManager', () => {
+describe('google_container_manager', () => {
 
     beforeEach(() => {
         vi.resetAllMocks();
@@ -72,7 +72,7 @@ describe('GoogleContainerManager', () => {
         mock_exists_sync.mockReturnValue(true);
         mock_read_file_sync.mockReturnValue(JSON.stringify(cached));
 
-        const manager = new GoogleContainerManager();
+        const manager = new google_container_manager();
         const result = await manager.get_container('PTASK', {});
 
         expect(result).toEqual(cached.PTASK);
@@ -91,7 +91,7 @@ describe('GoogleContainerManager', () => {
             },
         });
 
-        const manager = new GoogleContainerManager();
+        const manager = new google_container_manager();
         const result = await manager.get_container('PTASK', {});
 
         expect(mock_tasklists_insert).not.toHaveBeenCalled();
@@ -108,7 +108,7 @@ describe('GoogleContainerManager', () => {
             .mockResolvedValueOnce({ data: { id: 'new-n' } })
             .mockResolvedValueOnce({ data: { id: 'new-d' } });
 
-        const manager = new GoogleContainerManager();
+        const manager = new google_container_manager();
         const result = await manager.get_container('CTASK', {});
 
         expect(mock_tasklists_insert).toHaveBeenCalledTimes(3);
@@ -128,7 +128,7 @@ describe('GoogleContainerManager', () => {
             .mockResolvedValueOnce({ data: { id: 'id-n' } })
             .mockResolvedValueOnce({ data: { id: 'id-d' } });
 
-        const manager = new GoogleContainerManager();
+        const manager = new google_container_manager();
         await manager.get_container('TTASK', {});
 
         expect(mock_write_file_sync).toHaveBeenCalledOnce();
@@ -151,7 +151,7 @@ describe('GoogleContainerManager', () => {
             .mockResolvedValueOnce({ data: { id: 'new-n' } })
             .mockResolvedValueOnce({ data: { id: 'new-d' } });
 
-        const manager = new GoogleContainerManager();
+        const manager = new google_container_manager();
         const result = await manager.get_container('ATASK', {});
 
         expect(mock_tasklists_insert).toHaveBeenCalledTimes(2);

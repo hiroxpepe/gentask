@@ -1,5 +1,5 @@
 /**
- * @file src/google-container-manager.ts
+ * @file src/google_container_manager.ts
  * @description Google Tasks リストのライフサイクルを管理するクラス。
  * モード（PTASK/TTASK/CTASK/ATASK）ごとに 今週分・来週分・完了 の 3 リストを
  * Google Tasks 上で自動作成・取得し、ローカルキャッシュ（~/.gentask/tasklists.json）に保存する。
@@ -25,11 +25,11 @@ const BUCKET_LABELS: Record<bucket_role, string> = {
 };
 
 /**
- * @class GoogleContainerManager
+ * @class google_container_manager
  * @description モードごとの Google Tasks リストコンテナを管理する。
  * 初期化時にキャッシュを読み込み、未キャッシュのモードは API で取得・作成してキャッシュする。
  */
-export class GoogleContainerManager {
+export class google_container_manager {
     /** モード → バケットロール → リスト ID のローカルキャッシュ */
     private cache: Record<string, Record<bucket_role, string>> = {};
 

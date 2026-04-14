@@ -1,5 +1,7 @@
 # Gentask Google化改修計画 — 実コード検証済み版
 
+> ⚠️ **HISTORICAL DOCUMENT — All phases described herein are now fully implemented.**
+
 > **目的:** Microsoft 365（Planner / Outlook / Microsoft Graph）を完全撤去し、Google Tasks + Google Calendar のみを使用するシステムへ全面改修する。
 >
 > **本文書の根拠:** `lib/types.ts` `lib/env.ts` `lib/snapshot.ts` `src/google.ts` `bin/index.ts` `bin/sync.ts` `bin/slide.ts` `bin/index.test.ts` `bin/sync.test.ts` `bin/slide.test.ts` `package.json` の全ソースコードを読んだうえで記述している。根拠のない行番号・件数は記載しない。

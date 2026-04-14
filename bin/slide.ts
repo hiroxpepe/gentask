@@ -13,8 +13,8 @@ import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { validate_env } from '../lib/env';
 import { google } from 'googleapis';
-import { createOAuthClient } from '../src/google';
-import { GoogleContainerManager } from '../src/google-container-manager';
+import { create_oauth_client } from '../src/google';
+import { google_container_manager } from '../src/google_container_manager';
 import {
     task_schema,
     type bucket_role,
@@ -57,16 +57,16 @@ export const PLANNING_SCHEDULE: Partial<Record<SubRole, { day: number; hour: num
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
 /**
- * @interface GoogleTaskItem
+ * @interface google_task_item
  * @description Google Tasks API から取得したタスクの必要最小構造。
  */
-export interface GoogleTaskItem {
+export interface google_task_item {
     id:       string;
     title:    string;
     notes?:   string;
     status:   'needsAction' | 'completed';
     due?:     string;
-    listId:   string;
+    list_id:  string;
     sub_role: SubRole; // タスクの工程ロール（デフォルト 'other'）
 }
 
@@ -115,7 +115,7 @@ export function get_weekday_date(base_monday: Date, target_day: number): Date {
  * @param auth    Google OAuth2 クライアント
  * @returns GoogleTaskItem の配列
  */
-async function get_tasks_in_list(list_id: string, auth: any): Promise<GoogleTaskItem[]> {
+async function get_tasks_in_list(list_id: string, auth: any): Promise<google_task_item[]> {
     const tasks_client = google.tasks({ version: 'v1', auth });
     const res = await tasks_client.tasks.list({
         tasklist:      list_id,
@@ -129,7 +129,7 @@ async function get_tasks_in_list(list_id: string, auth: any): Promise<GoogleTask
             notes:    t.notes ?? undefined,
             status:   (t.status as 'needsAction' | 'completed') ?? 'needsAction',
             due:      t.due ?? undefined,
-            listId:   list_id,
+            list_id:  list_id,
             sub_role: (meta?.sub_role as SubRole) ?? 'other',
         };
     });
@@ -149,12 +149,12 @@ async function get_tasks_in_list(list_id: string, auth: any): Promise<GoogleTask
  * @returns 移動後の新しい GoogleTaskItem
  */
 async function move_task(
-    task: GoogleTaskItem,
+    task: google_task_item,
     source_list_id: string,
     target_list_id: string,
     auth: any,
-    overrides?: Partial<Pick<GoogleTaskItem, 'due'>>
-): Promise<GoogleTaskItem> {
+    overrides?: Partial<Pick<google_task_item, 'due'>>
+): Promise<google_task_item> {
     const tasks_client = google.tasks({ version: 'v1', auth });
 
     // 既存メタデータを解析
@@ -167,13 +167,13 @@ async function move_task(
             existing_meta.uuid,
             task.id,
             source_list_id,
-            { status: task.status, due: task.due, notes: task.notes, listId: source_list_id }
+            { status: task.status, due: task.due, notes: task.notes, list_id: source_list_id }
         );
     }
 
-    // メタデータの listId を移動先に更新して引き継ぐ
+    // メタデータの list_id を移動先に更新して引き継ぐ
     const updated_meta = existing_meta
-        ? encode_gentask_metadata({ ...existing_meta, listId: target_list_id })
+        ? encode_gentask_metadata({ ...existing_meta, list_id: target_list_id })
         : null;
     const new_notes = updated_meta
         ? (pure_notes ? `${pure_notes}\n${updated_meta}` : updated_meta)
@@ -202,8 +202,8 @@ async function move_task(
         const cal_client = google.calendar({ version: 'v3', auth });
         try {
             await cal_client.events.patch({
-                calendarId: existing_meta.calendarId,
-                eventId:    existing_meta.eventId,
+                calendarId: existing_meta.calendar_id,
+                eventId:    existing_meta.event_id,
                 requestBody: {
                     extendedProperties: {
                         private: {
@@ -225,7 +225,7 @@ async function move_task(
         notes:    inserted.data.notes ?? undefined,
         status:   (inserted.data.status as 'needsAction' | 'completed') ?? 'needsAction',
         due:      inserted.data.due ?? undefined,
-        listId:   target_list_id,
+        list_id:  target_list_id,
         sub_role: task.sub_role,
     };
 }
@@ -281,7 +281,7 @@ export async function archive_current_week(
 export async function promote_next_week(
     container: Record<bucket_role, string>,
     auth: any
-): Promise<GoogleTaskItem[]> {
+): Promise<google_task_item[]> {
     const tasks = await get_tasks_in_list(container.next, auth);
     if (tasks.length === 0) {
         console.log('  [Promote] 来週分バケットにタスクがありません。');
@@ -289,7 +289,7 @@ export async function promote_next_week(
     }
 
     const next_monday = get_next_monday();
-    const promoted: GoogleTaskItem[] = [];
+    const promoted: google_task_item[] = [];
 
     for (const task of tasks) {
         const new_task = await move_task(
@@ -316,7 +316,7 @@ export async function promote_next_week(
  * @param auth  Google OAuth2 クライアント
  */
 export async function schedule_promoted_tasks(
-    tasks: GoogleTaskItem[],
+    tasks: google_task_item[],
     auth: any
 ): Promise<void> {
     if (tasks.length === 0) return;
@@ -349,7 +349,7 @@ export async function schedule_promoted_tasks(
                             private: {
                                 gentask_uuid:   decode_gentask_metadata(task.notes)?.uuid ?? generate_gentask_uuid(),
                                 gentask_taskId: task.id,
-                                gentask_listId: task.listId,
+                                gentask_listId: task.list_id,
                             },
                         },
                     },
@@ -361,14 +361,14 @@ export async function schedule_promoted_tasks(
                 const pure_notes   = strip_gentask_metadata(task.notes);
                 const new_uuid     = existing_meta?.uuid ?? generate_gentask_uuid();
                 const new_meta     = encode_gentask_metadata({
-                    uuid:       new_uuid,
-                    eventId:    event_id,
-                    calendarId: calendar_id,
-                    listId:     task.listId,
-                    sub_role:   task.sub_role,
+                    uuid:        new_uuid,
+                    event_id:    event_id,
+                    calendar_id: calendar_id,
+                    list_id:     task.list_id,
+                    sub_role:    task.sub_role,
                 });
                 await tasks_client.tasks.update({
-                    tasklist: task.listId,
+                    tasklist: task.list_id,
                     task:     task.id,
                     requestBody: {
                         id:    task.id,
@@ -391,7 +391,7 @@ export async function schedule_promoted_tasks(
                         private: {
                             gentask_uuid:   decode_gentask_metadata(task.notes)?.uuid ?? generate_gentask_uuid(),
                             gentask_taskId: task.id,
-                            gentask_listId: task.listId,
+                            gentask_listId: task.list_id,
                         },
                     },
                 },
@@ -402,14 +402,14 @@ export async function schedule_promoted_tasks(
             const pure_notes   = strip_gentask_metadata(task.notes);
             const new_uuid     = existing_meta?.uuid ?? generate_gentask_uuid();
             const new_meta     = encode_gentask_metadata({
-                uuid:       new_uuid,
-                eventId:    event_id,
-                calendarId: calendar_id,
-                listId:     task.listId,
-                sub_role:   task.sub_role,
+                uuid:        new_uuid,
+                event_id:    event_id,
+                calendar_id: calendar_id,
+                list_id:     task.list_id,
+                sub_role:    task.sub_role,
             });
             await tasks_client.tasks.update({
-                tasklist: task.listId,
+                tasklist: task.list_id,
                 task:     task.id,
                 requestBody: {
                     id:    task.id,
@@ -482,8 +482,8 @@ if (is_main) {
     try {
         console.log('🗓️  Gentask Weekly Slide 開始...\n');
 
-        const auth    = createOAuthClient();
-        const manager = new GoogleContainerManager();
+        const auth    = create_oauth_client();
+        const manager = new google_container_manager();
 
         for (const mode of MODES) {
             console.log(`\n📋 ${mode}`);

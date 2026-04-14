@@ -3,8 +3,8 @@ import { googleAI, gemini20Flash } from '@genkit-ai/googleai';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
-import { createOAuthClient } from '../src/google';
-import { GoogleContainerManager } from '../src/google-container-manager';
+import { create_oauth_client } from '../src/google';
+import { google_container_manager } from '../src/google_container_manager';
 import {
     task_schema,
     type gen_task,
@@ -72,8 +72,8 @@ if (is_main) {
         const generated_tasks = await task_flow(input_subject);
 
         // 2. Google Tasks + Calendar へ展開
-        const auth         = createOAuthClient();
-        const manager      = new GoogleContainerManager();
+        const auth         = create_oauth_client();
+        const manager      = new google_container_manager();
         const tasks_client = google.tasks({ version: 'v1', auth });
         const cal_client   = google.calendar({ version: 'v3', auth });
         const calendar_id  = process.env.GOOGLE_CALENDAR_ID!;
@@ -121,11 +121,11 @@ if (is_main) {
 
             // タスクの notes に UUID 付き双方向リンクを埋め込む
             const metadata = encode_gentask_metadata({
-                uuid:       gentask_uuid,
-                eventId:    event_id,
-                calendarId: calendar_id,
-                listId:     list_id,
-                sub_role:   task.sub_role ?? 'other',
+                uuid:        gentask_uuid,
+                event_id:    event_id,
+                calendar_id: calendar_id,
+                list_id:     list_id,
+                sub_role:    task.sub_role ?? 'other',
             });
             await tasks_client.tasks.update({
                 tasklist: list_id,

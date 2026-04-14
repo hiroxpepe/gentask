@@ -45,7 +45,7 @@ vi.mock('googleapis', () => ({
     },
 }));
 
-vi.mock('../src/google', () => ({ createOAuthClient: vi.fn(() => ({})) }));
+vi.mock('../src/google', () => ({ create_oauth_client: vi.fn(() => ({})) }));
 vi.mock('../lib/snapshot', () => ({ snapshot: { save: mock_snapshot_save, restore: vi.fn() } }));
 
 vi.mock('genkit', async () => {
@@ -73,7 +73,7 @@ import {
     promote_next_week,
     schedule_promoted_tasks,
     generate_next_plot,
-    type GoogleTaskItem,
+    type google_task_item,
 } from './slide';
 
 /**
@@ -82,21 +82,21 @@ import {
  * @param list_id  タスクのリスト ID
  */
 function make_meta_notes(sub_role: string, list_id = 'list-current'): string {
-    return `[gentask:{"uuid":"test-uuid-${sub_role}","eventId":"evt-1","calendarId":"cal-1","listId":"${list_id}","sub_role":"${sub_role}"}]`;
+    return `[gentask:{"uuid":"test-uuid-${sub_role}","event_id":"evt-1","calendar_id":"cal-1","list_id":"${list_id}","sub_role":"${sub_role}"}]`;
 }
 
 /**
- * GoogleTaskItem のファクトリ関数。テスト用にデフォルト値付きで生成する。
+ * google_task_item のファクトリ関数。テスト用にデフォルト値付きで生成する。
  */
 function make_task(
     id: string,
     title: string,
-    listId: string,
+    list_id: string,
     status: 'needsAction' | 'completed' = 'needsAction',
-    sub_role: GoogleTaskItem['sub_role'] = 'other',
+    sub_role: google_task_item['sub_role'] = 'other',
     notes?: string
-): GoogleTaskItem {
-    return { id, title, listId, status, sub_role, notes };
+): google_task_item {
+    return { id, title, list_id, status, sub_role, notes };
 }
 
 // ─── get_next_monday テスト ───────────────────────────────────────────────────

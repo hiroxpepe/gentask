@@ -4,7 +4,7 @@ import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { validate_env } from '../lib/env';
 import { google } from 'googleapis';
-import { createOAuthClient } from '../src/google';
+import { create_oauth_client } from '../src/google';
 import { snapshot } from '../lib/snapshot';
 import {
     sync_action_schema,
@@ -26,12 +26,12 @@ export const sync_flow = ai_engine.defineFlow(
     {
         name: 'sync_flow',
         inputSchema: z.array(z.object({
-            eventId:       z.string(),
-            taskId:        z.string(),
-            listId:        z.string(),
-            subject:       z.string(),
-            bodyContent:   z.string(),
-            currentStatus: z.number(),
+            event_id:       z.string(),
+            task_id:        z.string(),
+            list_id:        z.string(),
+            subject:        z.string(),
+            body_content:   z.string(),
+            current_status: z.number(),
         })),
         outputSchema: z.array(sync_action_schema),
     },
@@ -39,10 +39,10 @@ export const sync_flow = ai_engine.defineFlow(
         if (items.length === 0) return [];
 
         const items_text = items.map((item, i) =>
-            `[${i + 1}] タスクID: ${item.taskId}\n` +
+            `[${i + 1}] タスクID: ${item.task_id}\n` +
             `    件名: ${item.subject}\n` +
-            `    本文: ${item.bodyContent.trim().slice(0, 300)}\n` +
-            `    現在の進捗: ${item.currentStatus}%`
+            `    本文: ${item.body_content.trim().slice(0, 300)}\n` +
+            `    現在の進捗: ${item.current_status}%`
         ).join('\n\n');
 
         const { output } = await ai_engine.generate({
@@ -68,10 +68,10 @@ ${items_text}`,
 );
 
 /**
- * @class GoogleSyncService
+ * @class google_sync_service
  * @description sync_flow の出力を受け取り、Google Tasks に実際の変更を適用するサービス。
  */
-export class GoogleSyncService {
+export class google_sync_service {
     /**
      * @method apply_actions
      * @description AI が生成したアクション配列を Google Tasks API に反映する。
@@ -82,13 +82,13 @@ export class GoogleSyncService {
         actions: sync_action[],
         list_map: Map<string, string>
     ): Promise<void> {
-        const auth         = createOAuthClient();
+        const auth         = create_oauth_client();
         const tasks_client = google.tasks({ version: 'v1', auth });
 
         for (const action of actions) {
             if (action.action === 'no_change') continue;
 
-            const task_id = action.taskId;
+            const task_id = action.task_id;
             const list_id = list_map.get(task_id);
 
             if (!list_id) {
@@ -120,7 +120,7 @@ export class GoogleSyncService {
                 }
 
                 case 'reschedule': {
-                    if (!action.newDueDate) break;
+                    if (!action.new_due_date) break;
                     const before = await tasks_client.tasks.get({ tasklist: list_id, task: task_id });
                     const meta   = decode_gentask_metadata(before.data.notes);
                     if (meta) {
@@ -134,7 +134,7 @@ export class GoogleSyncService {
                     await tasks_client.tasks.update({
                         tasklist: list_id,
                         task:     task_id,
-                        requestBody: { id: task_id, due: action.newDueDate },
+                        requestBody: { id: task_id, due: action.new_due_date },
                     });
                     break;
                 }
@@ -198,10 +198,10 @@ export class GoogleSyncService {
  * @param sync_svc テスト時に差し替え可能なサービスインスタンス
  */
 export async function main(
-    sync_svc = new GoogleSyncService()
+    sync_svc = new google_sync_service()
 ) {
     try {
-        const auth         = createOAuthClient();
+        const auth         = create_oauth_client();
         const cal_client   = google.calendar({ version: 'v3', auth });
         const tasks_client = google.tasks({ version: 'v1', auth });
         const calendar_id  = process.env.GOOGLE_CALENDAR_ID!;
@@ -252,12 +252,12 @@ export async function main(
             list_map.set(task_id, list_id);
 
             sync_inputs.push({
-                eventId:       event.id!,
-                taskId:        task_id,
-                listId:        list_id,
-                subject:       event.summary ?? '',
-                bodyContent:   event.description ?? '',
-                currentStatus: current_status,
+                event_id:       event.id!,
+                task_id:        task_id,
+                list_id:        list_id,
+                subject:        event.summary ?? '',
+                body_content:   event.description ?? '',
+                current_status: current_status,
             });
         }
 

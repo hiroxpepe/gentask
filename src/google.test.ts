@@ -34,31 +34,31 @@ describe('google wrapper', () => {
     try { if (fs.existsSync(tmpToken)) fs.unlinkSync(tmpToken); } catch {}
   });
 
-  it('generateAuthUrl returns url', async () => {
+  it('generate_auth_url returns url', async () => {
     const mod = await import('./google');
-    const url = mod.generateAuthUrl();
+    const url = mod.generate_auth_url();
     expect(typeof url).toBe('string');
     expect(url.startsWith('http')).toBe(true);
   });
 
-  it('exchangeCodeAndSave writes token file', async () => {
+  it('exchange_code_and_save writes token file', async () => {
     const mod = await import('./google');
-    const tokens = await mod.exchangeCodeAndSave('code');
+    const tokens = await mod.exchange_code_and_save('code');
     expect(tokens).toHaveProperty('access_token');
     expect(fs.existsSync(tmpToken)).toBe(true);
   });
 
-  it('listCalendars returns array', async () => {
+  it('list_calendars returns array', async () => {
     const mod = await import('./google');
-    const items = await mod.listCalendars();
+    const items = await mod.list_calendars();
     expect(Array.isArray(items)).toBe(true);
     expect(items.length).toBeGreaterThan(0);
     expect(items[0]).toHaveProperty('id');
   });
 
-  it('createTask returns task', async () => {
+  it('create_task returns task', async () => {
     const mod = await import('./google');
-    const res = await mod.createTask(undefined, 'Title', 'notes');
+    const res = await mod.create_task(undefined, 'Title', 'notes');
     expect(res).toHaveProperty('id');
     expect(res).toHaveProperty('title');
   });

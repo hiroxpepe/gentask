@@ -2,26 +2,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Hoisted mocks so the mocked functions are available to both the mock factory and the tests
 const {
-  mock_generateAuthUrl,
-  mock_exchangeCodeAndSave,
-  mock_listCalendars,
-  mock_createCalendarEvent,
-  mock_createTask,
+  mock_generate_auth_url,
+  mock_exchange_code_and_save,
+  mock_list_calendars,
+  mock_create_calendar_event,
+  mock_create_task,
 } = vi.hoisted(() => ({
-  mock_generateAuthUrl: vi.fn(),
-  mock_exchangeCodeAndSave: vi.fn(),
-  mock_listCalendars: vi.fn(),
-  mock_createCalendarEvent: vi.fn(),
-  mock_createTask: vi.fn(),
+  mock_generate_auth_url:       vi.fn(),
+  mock_exchange_code_and_save:  vi.fn(),
+  mock_list_calendars:          vi.fn(),
+  mock_create_calendar_event:   vi.fn(),
+  mock_create_task:             vi.fn(),
 }));
 
 // Mock the actual implementation used by the bin script
 vi.mock('../src/google', () => ({
-  generateAuthUrl: mock_generateAuthUrl,
-  exchangeCodeAndSave: mock_exchangeCodeAndSave,
-  listCalendars: mock_listCalendars,
-  createCalendarEvent: mock_createCalendarEvent,
-  createTask: mock_createTask,
+  generate_auth_url:        mock_generate_auth_url,
+  exchange_code_and_save:   mock_exchange_code_and_save,
+  list_calendars:           mock_list_calendars,
+  create_calendar_event:    mock_create_calendar_event,
+  create_task:              mock_create_task,
 }));
 
 describe('bin/google CLI', () => {
@@ -53,14 +53,14 @@ describe('bin/google CLI', () => {
   });
 
   it('auth-url prints generated url', async () => {
-    mock_generateAuthUrl.mockReturnValueOnce('https://auth.example');
+    mock_generate_auth_url.mockReturnValueOnce('https://auth.example');
     process.argv = ['node', 'bin/google.ts', 'auth-url'];
 
     await import('./google');
     // allow async IIFE to settle if any
     await new Promise((r) => setImmediate(r));
 
-    expect(mock_generateAuthUrl).toHaveBeenCalledOnce();
+    expect(mock_generate_auth_url).toHaveBeenCalledOnce();
     expect(console.log).toHaveBeenCalledWith('https://auth.example');
   });
 
@@ -73,25 +73,25 @@ describe('bin/google CLI', () => {
   });
 
   it('save-token with code exchanges and confirms', async () => {
-    mock_exchangeCodeAndSave.mockResolvedValueOnce({ access_token: 't' });
+    mock_exchange_code_and_save.mockResolvedValueOnce({ access_token: 't' });
     process.argv = ['node', 'bin/google.ts', 'save-token', 'CODE123'];
 
     await import('./google');
     await new Promise((r) => setImmediate(r));
 
-    expect(mock_exchangeCodeAndSave).toHaveBeenCalledWith('CODE123');
+    expect(mock_exchange_code_and_save).toHaveBeenCalledWith('CODE123');
     expect(console.log).toHaveBeenCalledWith('Token saved.');
   });
 
   it('list-cals prints calendars as JSON', async () => {
     const cals = [{ id: 'cal1', summary: 'Test Calendar' }];
-    mock_listCalendars.mockResolvedValueOnce(cals as any);
+    mock_list_calendars.mockResolvedValueOnce(cals as any);
     process.argv = ['node', 'bin/google.ts', 'list-cals'];
 
     await import('./google');
     await new Promise((r) => setImmediate(r));
 
-    expect(mock_listCalendars).toHaveBeenCalledOnce();
+    expect(mock_list_calendars).toHaveBeenCalledOnce();
     expect(console.log).toHaveBeenCalledWith(JSON.stringify(cals, null, 2));
   });
 
@@ -103,14 +103,14 @@ describe('bin/google CLI', () => {
     expect((process.exit as unknown as jest.Mock | Function)).toHaveBeenCalledWith(1);
   });
 
-  it('create-event with args calls createCalendarEvent and prints result', async () => {
-    mock_createCalendarEvent.mockResolvedValueOnce({ id: 'ev-1' });
+  it('create-event with args calls create_calendar_event and prints result', async () => {
+    mock_create_calendar_event.mockResolvedValueOnce({ id: 'ev-1' });
     process.argv = ['node', 'bin/google.ts', 'create-event', 'cal1', 'Summary', '2026-04-01T00:00:00Z', '2026-04-01T01:00:00Z'];
 
     await import('./google');
     await new Promise((r) => setImmediate(r));
 
-    expect(mock_createCalendarEvent).toHaveBeenCalledWith('cal1', 'Summary', '2026-04-01T00:00:00Z', '2026-04-01T01:00:00Z');
+    expect(mock_create_calendar_event).toHaveBeenCalledWith('cal1', 'Summary', '2026-04-01T00:00:00Z', '2026-04-01T01:00:00Z');
     expect(console.log).toHaveBeenCalledWith(JSON.stringify({ id: 'ev-1' }, null, 2));
   });
 
@@ -122,14 +122,14 @@ describe('bin/google CLI', () => {
     expect((process.exit as unknown as jest.Mock | Function)).toHaveBeenCalledWith(1);
   });
 
-  it('create-task with args calls createTask and prints result', async () => {
-    mock_createTask.mockResolvedValueOnce({ id: 'task-1' });
+  it('create-task with args calls create_task and prints result', async () => {
+    mock_create_task.mockResolvedValueOnce({ id: 'task-1' });
     process.argv = ['node', 'bin/google.ts', 'create-task', '@default', 'My Task', 'Some notes'];
 
     await import('./google');
     await new Promise((r) => setImmediate(r));
 
-    expect(mock_createTask).toHaveBeenCalledWith('@default', 'My Task', 'Some notes');
+    expect(mock_create_task).toHaveBeenCalledWith('@default', 'My Task', 'Some notes');
     expect(console.log).toHaveBeenCalledWith(JSON.stringify({ id: 'task-1' }, null, 2));
   });
 

@@ -1,5 +1,7 @@
 # Gentask Google化改修計画
 
+> ⚠️ **HISTORICAL DOCUMENT — All phases described herein are now fully implemented.**
+
 > **目的:** Microsoft 365（Planner / Outlook / Microsoft Graph）を完全撤去し、Google Tasks + Google Calendar のみを使用するシステムへ全面改修する。
 
 ---
