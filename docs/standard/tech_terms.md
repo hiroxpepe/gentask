@@ -70,15 +70,41 @@ LLM.
 **API** — Short for "application programming interface". A fixed way for one
 program to ask another program (or a web service) to do something or give data.
 
-**Google Tasks** — A Google web service that keeps lists of things to do. The
-CLI reads and writes it through its API.
+---
 
-**Google Calendar** — A Google web service that keeps events with dates and
-times. The CLI reads and writes it through its API.
+## Data store
 
-**spreadsheet** — A page of rows and columns that keeps data. Here it means a
-Google Spreadsheet, used as the one true store of the task state. People do not
-type into it by hand; the LLM and the CLI are what read and write it.
+**SQLite** — A small database kept in one file. It holds the true state of the
+work, and keeps the links between the many parts in order. In this project the
+`.db` file is the true store (the "master copy"), kept in the repository.
+
+**CSV** — Short for "comma-separated values". A plain-text way to keep rows and
+columns. In this project the CSV is the "window": it is written out from the
+SQLite file so that its changes show up in the Git record. The Git history of
+the CSV is what lets a person look back later. People do not type into it by
+hand; the CLI is what writes it.
+
+---
+
+## Work model
+
+**content** — A finished work: one 4-panel episode, a 3D model, a game, and so
+on. It is the unit of a series — the thing that goes out to the world.
+
+**task** — One step of work that goes into making a content (for example: plot,
+name, 3D modeling). A content is made of many tasks.
+
+**slot** — A block of time, 15 minutes long. It is the smallest unit of the
+record. Each slot is marked with what kind of time it was (work or life). The
+sense is close to a "slot" in broadcasting: a time block, before or after use.
+
+**assignment** — The link that says which task was done in which slot, and how
+it really went. It is what the agent changes when a person tells (in words)
+what they did.
+
+> Note: the exact fields of content / task / slot / assignment are not yet
+> fixed. They are set in the schema work that is still to come. This reference
+> gives the sense of each term, not its full field list.
 
 ---
 

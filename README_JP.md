@@ -1,345 +1,112 @@
 # Gentask
 
-> **週刊漫画連載のための AI 駆動・エネルギー対応タスクオーケストレーション**
+> **人間がツールに仕えないタスク管理 — 月間連載を続けられる状態を支える**
 
-Gentask は **Google Tasks + Google Calendar** と **Gemini 2.0 Flash（Vertex AI）** を Genkit 経由で統合し、週刊漫画連載の制作サイクルを自動かつインテリジェントに管理する CLI ツールです。
+Gentask は、タスク管理の主従を元に戻すための道具である。
+人間は生きて、作業して、喋るだけでいい。時間の配置も、現実との辻褄合わせも、記録も、Gentask の側が引き受ける。
 
----
-
-## ✨ 設計思想
-
-> *「管理を意識させない管理」*
-
-作家は Google Calendar という「自由なキャンバス」で作業時間を動かし、メモを書く。Gentask（AI）は、その自由な振る舞いの背後にある「18sp モデルとの差分」を計算し、Google Tasks を無言で更新し続ける。
-
-一般的なタスク管理ツールは、優先度と締め切りに最適化されています。  
-**Gentask は実行エネルギーと持続可能なクリエイティブ産出に最適化されています。**
+> ⚠️ **本リポジトリは現在、旧構造（Google Calendar/Tasks + Gemini 連携）から新仕様への大改修中である。**
+> 設計の正本は [`docs/new_spec_gentask_JP.md`](docs/new_spec_gentask_JP.md)。本 README はその要約であり、実装は順次これに追従する。
 
 ---
 
-## 🧠 18sp / 36ブロック 制作モデル
+## 思想 — 主従を元に戻す
 
-Gentask は 1 話を **18.0sp（18時間）** と定義し、**36 個の 0.5sp（30分）ブロック** に分解して管理します。
+タスク管理は本来、人間が忘れないように・段取りに悩まないように、その負担を外部へ預けるための仕組みだった。ツールが人間に仕える。それが本来あるべき姿である。
 
-| フェーズ | 工程 | sp | ブロック数 | 定義・完了条件 |
-|---|---|---|---|---|
-| **企画 (P)** | プロット | 2.0 | 4 | 全セリフ・演出意図の言語化 |
-| | ラフネーム | 0.5 | 1 | コマ割りと視線誘導の確定 |
-| | フルネーム | 0.5 | 1 | 表情・詳細ネームの確定 |
-| **技術 (T)** | プリレイアウト | 2.0 | 4 | 3D配置前の「設計図」完成 |
-| | 3Dモデル制作 | 3.0 | 6 | ポージング・レンダリング完了 |
-| | レイアウト | 3.0 | 6 | カメラ決定・背景合成完了 |
-| **制作 (C)** | エディット | 2.5 | 5 | 画像加筆・エフェクト処理完了 |
-| | 投稿 | 0.5 | 1 | **日曜 21:00 厳守** |
-| **調整 (A)** | 予備バッファ | 4.0 | 8 | クオリティアップ・遅延吸収 |
+ところが既存製品は主従を逆転させた。人間がツールに合わせて入力し、配置を守り、ズレを手で直す。だから続かず、放置され、死ぬ。Gentask はこの主従を元に戻す。
+
+- **配置する（未来・予定）**：制作モデルを理解して、LLM（会話）がざっくり配置を提案し、ツールが確定する。時刻には縛らない。
+- **人間は守らない**：サボる、違うことをする。それを咎めない。
+- **会話で現実を伝える**：人間はどこにも入力しない。ただ喋る。それが現実を伝える唯一の源。
+- **事後に塗り替える（過去・実績）**：会話を解釈して、実際に使った時間を実績として記録する。
+- **裁かない**：記録は反省でも教材でもなく、後で「こんなに時間使ってたか」と苦笑いするためのもの。裁かないから死なない。
 
 ---
 
-## 🗂 タスクモード
+## 何を支えるのか
 
-タスクは 4 つの実行モードに分類され、それぞれ専用の Google Tasks リストに対応します：
+Gentask の目的は、**月間連載を続けられる状態を支えること**。
+締切があり、毎月コンテンツが世に出て、連載が続くリズムを、開発（3D・ゲーム）と両立する形で取り戻す。
 
-| モード | 種別 | 説明 | デフォルトバケット |
-|---|---|---|---|
-| **PTASK** | Planning（企画） | 思考・設計・意思決定 | 来週分 |
-| **TTASK** | Technical（技術） | 実装・環境構築・セットアップ | 今週分 |
-| **CTASK** | Creative（制作） | 手を動かす制作作業 | 今週分 |
-| **ATASK** | Administrative（事務） | 調整・管理・ルーティン | 今週分 |
+かつて週刊連載を続けられた作家に編集者がいたように、Gentask が目指すのは伴走する**編集者**である。ただし LLM は反応装置であり、能動的な追いかけはできない。その限界に合わせ、実績を見せること・週次の締切・編集者エージェントの働きかけで動機を生む。
 
-各モードは 3 つの Google Tasks リストを持ちます（計 12 リスト）：
+---
 
-| リスト名（Google Tasks） | ロール（`bucket_role`） | 説明 |
+## 時間の分類
+
+時間は「作業（個人事業＝本丸）」と「生活（それ以外）」に分かれ、8 つの記号で決定的に分類する（LLM の判断に委ねない）。
+
+| 区分 | 記号 | 意味 |
 |---|---|---|
-| `gentask_{MODE}_今週分` | `current` | 今週のアクティブタスク |
-| `gentask_{MODE}_来週分` | `next` | 次週以降のタスク（企画フェーズ） |
-| `gentask_{MODE}_完了` | `done` | アーカイブ済み完了タスク |
-
-リストは初回実行時に自動作成され、`~/.gentask/tasklists.json` にキャッシュされます。
-
----
-
-## ⚙️ システムアーキテクチャ
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Gentask CLI                             │
-│                                                              │
-│  gen:dev / gen:prod                                          │
-│       │                                                      │
-│       ▼                                                      │
-│  ┌──────────────┐  Gemini 2.0 Flash（Vertex AI / Genkit）    │
-│  │  index.ts    │──► task_flow: 題材 → gen_task[]            │
-│  └──────┬───────┘                                            │
-│         ▼                                                    │
-│  ┌──────────────┐  Google Tasks API                          │
-│  │  container   │──► get_container(mode) → {current,next,done}│
-│  │  manager     │  （12リスト自動管理・キャッシュ）           │
-│  └──────┬───────┘                                            │
-│         ▼                                                    │
-│  ┌──────────────┐  Google Tasks API + Google Calendar API    │
-│  │   deploy     │──► tasks.insert + events.insert            │
-│  │              │──► 双方向リンク埋め込み                    │
-│  └─────────────┘                                             │
-│                                                              │
-│  sync:dev / sync:prod                                        │
-│       │                                                      │
-│       ▼                                                      │
-│  ┌──────────────┐  Google Calendar API                       │
-│  │   sync.ts    │──► events.list（gentask_taskId フィルタ）   │
-│  └──────┬───────┘                                            │
-│         ▼                                                    │
-│  ┌──────────────┐  Gemini 2.0 Flash（Vertex AI / Genkit）    │
-│  │  sync_flow   │──► イベント本文 → sync_action[]            │
-│  └──────┬───────┘                                            │
-│         ▼                                                    │
-│  ┌──────────────┐  Google Tasks API                          │
-│  │  apply_      │──► tasks.update（complete/reschedule/undo）│
-│  │  actions     │                                            │
-│  └─────────────┘                                             │
-│                                                              │
-│  slide:dev / slide:prod                                      │
-│       │                                                      │
-│       ▼                                                      │
-│  ┌──────────────┐  Google Tasks API + Google Calendar API    │
-│  │   slide.ts   │──► アーカイブ→昇格→スケジュール→生成       │
-│  └─────────────┘                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+| 作業 | P | 企画（思考・戦略・言語化・計画） |
+| 作業 | T | 技術（検証・環境構築・実装） |
+| 作業 | C | 制作（制作・デザイン・コンテンツ作成） |
+| 作業 | A | 管理（運用・事務・ルーチン） |
+| 生活 | D | 生活（食事・入浴・睡眠） |
+| 生活 | J | 仕事（本業＝金を得る手段） |
+| 生活 | W | 運動（散歩・懸垂） |
+| 生活 | M | 移動（通勤等。LLM 時代の新しい生産時間） |
 
 ---
 
-## 🚀 機能詳細
+## 二つの器
 
-### 1. AI タスク生成（`gen`）
+時間軸は 1 本。未来はざっくり、過去は精密。
 
-題材（例：「第42話 最終決戦」）を入力すると、Gemini 2.0 Flash（Vertex AI）を Genkit 経由で利用して P/T/C/A の構造化タスク一覧を生成します。タスクは即座に Google Tasks の正しいリストにデプロイされ、Google Calendar とのイベントが双方向リンク付きで作成されます。
+- **予定（カンバン形式・未来）**：タスクをカード（「今週」「来週」「いつか」）で積む。**時刻に貼らない**ので、守れなくても崩れない。
+- **実績（カレンダー形式・過去）**：手を動かして申告した結果が **15 分の枠**として落ちる。過去は確定しているので時刻に貼っても嘘にならない。
 
-### 2. インテリジェント AI シンクロナイザー（`sync`）
+やる前は時刻なし（予定）、やった後に時刻あり（実績）。予定に残ったカード（やらなかったこと）と実績の想定外の枠（YouTube 等）の落差が、後で眺める「苦笑い」の正体。
 
-Google Calendar のイベント（`gentask_taskId` タグ付き）を読み取り、AI が自由記述のメモを構造化された進捗シグナルとして解釈します：
+---
 
-| カレンダーでのユーザー行動 | AI の解釈 | Google Tasks への反映 |
+## アーキテクチャ（設計中）
+
+**「LLM は外、ツールは決定的」** — sfdc-user-tools / zcrm-tools と同じ構造。
+
+| 層 | 担当 | 役割 |
 |---|---|---|
-| 本文に「ok」と記入 | 「このブロックは完了した」 | `status → completed` |
-| 予定を後ろにずらした | 「作業時間がスライドした」 | `due` 自動修正 |
-| 「手が止まった。明日やる」と記入 | 「未完了・要リスケ」 | 翌日の空き枠へ移動 |
-| 「神回。倍の時間かけた」と記入 | 「バッファ消費」 | バッファタスクに追記 |
+| 判断層 | LLM（会話＝Claude/Copilot。**内蔵しない**） | 会話を、決定的ルールに従った反映アクションに変換する |
+| 操作層 | Gentask 本体（CLI ツール） | アクションを検証し、データを安全に更新、git に commit |
+| データ層 | SQLite（.db・正本）＋ CSV（窓） | リポジトリ内。CSV の git 履歴が苦笑いログを兼ねる |
 
-対応シンクアクション：`complete`、`reschedule`、`add_note`、`buffer_consumed`、`no_change`、`undo`
+- 言語は **TypeScript**、型は素の **zod**（旧 genkit/Gemini は廃止）。
+- Gentask 本体は **LLM を内蔵しない**。CSV/SQLite を操作する CLI に徹する。
+- **LLM の推論を信用しない**。ロジックは単体テスト（TDD）で担保する。
 
-### 3. スナップショット & アンドゥ
-
-すべてのタスク更新の直前に、タスクの現在状態が JSON スナップショットとして `~/.gentask/snapshots/{taskId}.json` に保存されます。巻き戻すには：連携しているカレンダーイベントの本文に `undo` または `戻して` と記入し、`npm run sync:dev` を実行してください。
-
-### 4. 週次スライド（日曜 21:00 プロセス）
-
-`slide` コマンドが話数移行の「儀式」を自動化します：
-
-1. **判定** — CTASK の「投稿」タスクが `status: completed` か確認（他モードはスキップ）
-2. **アーカイブ** — 全モードの `今週分` リストのタスクを `完了` リストへ移動
-3. **昇格（スライド）** — `来週分` リストのタスクを `今週分` へ移動し `due` を翌月曜に設定
-4. **スケジュール** — 昇格タスクを週間マトリクスに従い Google Calendar へ配置
-5. **新規生成** — AI が次々回話数のプロットタスク（最大4件）を PTASK `来週分` に生成
-
-### 5. 双方向リンク
-
-すべてのカレンダーイベントとタスクに相互参照が埋め込まれます：
-
-- **タスクのノート**（末尾追記）:
-  ```
-  [gentask:{"eventId":"…","calendarId":"…","listId":"…"}]
-  ```
-- **カレンダーイベント**（`extendedProperties.private`）:
-  - `gentask_taskId`: Google Tasks タスクID
-  - `gentask_listId`: Google Tasks リストID
+### データモデル（4 実体）
+| 名前 | 概念 | 役割 |
+|---|---|---|
+| content | 作品 | 連載の単位。世に出る成果物 |
+| task | 作業（工程） | content を作る工程（プロット/ネーム/3D 等） |
+| slot | 枠 | 確保された 15 分の時間区画。8 値で分類 |
+| assignment | 割り当て | どの task が・どの slot で・実際どうだったか。**会話で塗り替える対象** |
 
 ---
 
-## 🛠 必要環境
+## CLI（設計中）
 
-| ツール | 用途 |
-|---|---|
-| `node` ≥ 18 | ランタイム |
-| Google アカウント | Google Tasks + Google Calendar アクセス |
-| GCP プロジェクト | OAuth 2.0 認証情報 + Vertex AI API キー |
+Gentask は、人間が手でターミナルを叩いても成立する CLI アプリである。LLM は会話をコマンドに翻訳する入口にすぎず、LLM がいなくても人間が直接叩けば全機能が回る。形式は `gentask <名詞> <動詞>`（git/gh 流）。毎朝叩く閲覧だけは最短形。
+
+```
+gentask content add <title> --kind <4pnl|3dmd|…>   # 作品を作る
+gentask task add <content-uuid> <title> --mode <P|T|C|A> --sp <n>   # 工程を積む
+gentask slot log --from 9:00 --to 11:00 --cat C    # 実績を範囲で一括記録
+gentask today / week                                # 実績を見る（毎朝のトリガー）
+gentask sprint close                                # 週を締めて繰り上げ
+```
+
+> ⚠️ 上記は設計であり、実装は追従中。確定は [`docs/new_spec_gentask_JP.md`](docs/new_spec_gentask_JP.md) 第 10 章および今後の実装に依る。
 
 ---
 
-## ⚙️ 環境設定
+## 起点 — 会話が始まったこと
 
-`.env.dev`（および必要に応じて `.env.prod`）を作成します：
-
-```env
-# Google Vertex AI（Gemini）
-GCP_VERTEX_AI_API_KEY=your-vertex-ai-api-key
-
-# Google OAuth 2.0
-GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxx
-
-# 同期対象のカレンダーID
-GOOGLE_CALENDAR_ID=your-calendar-id@group.calendar.google.com
-
-# 任意
-GOOGLE_REDIRECT_URI=urn:ietf:wg:oauth:2.0:oob
-GOOGLE_TOKEN_PATH=.google_token.json
-```
-
-> ⚠️ `.env.*` ファイルはリポジトリにコミットしないでください。
+LLM は反応装置で、自ら時刻を刻めず、リポジトリを常時監視もできない。ゆえに**起点は「会話が始まったこと」自体**とする。会話の入り口でリポジトリを読み、外部から降ってきたタスク（Issue/inbox）をまとめて拾い、申告を反映し、git に commit する。瞬間的な反応は求めない。
 
 ---
 
-## 📦 インストール
-
-```sh
-npm install
-```
-
----
-
-## 🔑 Google OAuth セットアップ（初回のみ）
-
-```sh
-# 1. 認可 URL を生成
-npm run google:auth-url
-
-# 2. URL をブラウザで開いて認可し、コードをコピー
-# 3. コードをトークンに交換（.google_token.json に保存）
-npm run google:save-token -- <認可コード>
-
-# 4. アクセス確認
-npm run google:list-cals
-```
-
----
-
-## ▶️ 使い方
-
-### タスクの生成とデプロイ
-
-```sh
-# 題材からタスクを生成して Google Tasks + Calendar にデプロイ（開発環境）
-npm run gen:dev -- "第42話 最終決戦"
-
-# 本番環境
-npm run gen:prod -- "第42話 最終決戦"
-```
-
-実行内容：
-- Gemini AI が P/T/C/A 構造化タスク一覧を生成
-- Google Tasks の 12 リストを自動作成（初回のみ）
-- 各タスクを正しいリスト（`今週分` / `来週分`）にデプロイ
-- Google Calendar に連携イベントを作成
-- タスク・イベント間の双方向リンクを埋め込み
-
-### AI シンク（Calendar → Tasks に進捗反映）
-
-```sh
-# Google Calendar を読み取り Google Tasks に同期（開発環境）
-npm run sync:dev
-
-# 本番環境
-npm run sync:prod
-```
-
-### 週次スライド（話数移行）
-
-```sh
-# 週次スライドを実行（開発環境）
-npm run slide:dev -- "第43話 伏線回収"
-
-# 本番環境
-npm run slide:prod -- "第43話 伏線回収"
-```
-
-日曜 21:00 の投稿後に実行します。
-
-### テスト実行
-
-```sh
-# 全ユニットテストを実行（タイムゾーン固定）
-TZ=Asia/Tokyo npm test
-
-# ウォッチモード
-npm run test:watch
-```
-
----
-
-## 🗃 プロジェクト構成
-
-```
-gentask/
-├── bin/        # CLIエントリポイント（index.ts / sync.ts / slide.ts / google.ts）
-├── lib/        # 共有ライブラリ（types.ts / env.ts / snapshot.ts）
-├── src/        # コアロジック（google.ts / google-container-manager.ts）
-├── docs/       # プロジェクトドキュメント
-├── .env.dev    # 開発環境設定（コミット不可）
-├── .env.prod   # 本番環境設定（コミット不可）
-├── package.json
-└── tsconfig.json
-```
-
----
-
-## 🔁 週次ワークフロー
-
-```
-月曜日
-  │  npm run gen:dev -- "第N+1話"
-  │    → 今週の制作タスクを Google Tasks にデプロイ
-  │    → Google Calendar に連携イベントを作成
-  │
-月〜日
-  │  Google Calendar で作業（ブロックを動かし、メモを書く）
-  │
-  │  npm run sync:dev  ← いつでも実行して進捗を Tasks に反映
-  │
-日曜 21:00
-  │  投稿完了 ✅
-  │
-  │  npm run slide:dev -- "第N+2話 ヒント"
-  │    → アーカイブ → 昇格 → スケジュール → 次話生成
-  ▼
-翌月曜日  ← 準備完了
-```
-
----
-
-## 🔄 アンドゥ / リカバリ
-
-最後のシンク操作を取り消すには：
-
-1. 連携しているカレンダーイベントを開く
-2. 本文のどこかに `undo` または `戻して` と記入
-3. `npm run sync:dev` を実行
-
-Gentask がアンドゥシグナルを検出し、スナップショット（`~/.gentask/snapshots/{taskId}.json`）からタスクを復元して以前の状態に書き戻します。
-
----
-
-## 🧪 テスト
-
-Gentask は **Vitest** を使用し、ESM および TypeScript に完全対応しています。
-
-```sh
-TZ=Asia/Tokyo npm test
-```
-
-| ファイル | テスト数 |
-|---|---|
-| `bin/google.test.ts` | 9 |
-| `bin/index.test.ts` | 3 |
-| `bin/sync.test.ts` | ~8 |
-| `bin/slide.test.ts` | ~18 |
-| `lib/env.test.ts` | 3 |
-| `lib/snapshot.test.ts` | 7 |
-| `lib/types.test.ts` | 12 |
-| `src/google.test.ts` | 4 |
-| **合計** | **~64** |
-
----
-
-## 📄 ライセンス
+## License
 
 MIT
