@@ -132,9 +132,9 @@ LLM がざっくり配置を提案し、ツールが確定する対象。
 ### 5-1. 中心の取り違えを正す — タスクは中心ではない
 
 世の中のタスク管理が失敗する根本は、「タスク」を中心に据えることにある。
-実際の中心は **世に出る成果物**であり、その奥に **物語**があり、**版**があり、**再利用資産**があり、
+実際の中心は **世に出る成果物**であり、その奥に **シリーズ**があり、**版**があり、**再利用資産**があり、
 **締切**がある。**タスクはそれらを作るための末端の工程にすぎない。**
-Gentask は成果物と物語を中心に置き、タスクを末端へ追いやる。ここが世の全タスク管理との分岐点。
+Gentask は成果物を中心に置き、タスクを末端へ追いやる。ここが世の全タスク管理との分岐点。
 
 ### 5-2. 抽出された概念（実体の候補）
 
@@ -142,25 +142,39 @@ Gentask は成果物と物語を中心に置き、タスクを末端へ追いや
 主コンテンツ「エミリーとねこのオレンジ」という世界観は大前提であり、これはその世界観を
 様々な形態で世に出すための構造である。
 
+これらの概念の最上位に **content** が立つ。content は世界観を世に出すための**リリース区分**
+（マンガ / アプリ〈ゲーム〉/ 書籍 / 3Dモデル販売 等）であり、**最上位の包含者**である。
+task が結びつく先も content。各 content は種別ごとに**固有の概念群**を持つ
+（マンガ＝series/edition/episode、アプリ＝version/stage、書籍＝章/巻）。
+これらは無理に共通化せず、固有のまま持つ（共通の親 content ＋種別固有の子＝クラステーブル継承）。
+全 content に共通するのは content / release / deliverable / asset の骨格である（→ 5-4 以降）。
+
 | 概念 | 意味 | 補足 |
 |---|---|---|
-| **story** | 物語そのもの（話の中身） | それ自体は話数を持たない |
-| **edition** | 版（パイロット版 / 新装版 / コミックス等） | 並存する別の編集単位。ver とは異なる。各々が独自の話数体系を持つ |
-| **episode** | ある edition での story の配置 | ここで初めて話数が決まる（同じ話がパイロット版 #96・新装版 #26） |
-| **deliverable** | 世に出る成果物（意味のあるまとまり） | edition × 話数 × 言語で一意。例：新装版・#26・JP＝4枚のJPEG。ver（更新履歴）を持つ |
+| **content** | リリース区分（世界観を世に出す単位） | **最上位の包含者。** マンガ/アプリ/書籍/3Dモデル販売。task が結びつく先。種別ごとに固有概念群を持つ |
+| **series** | シリーズ（生活編 / ルシファイトの秘宝編 等） | 世界観「エミリーとねこのオレンジ」の下の括り。※マンガ固有概念群。この粒度に「話の中身＝story」という概念は置かない |
+| **edition** | 版（パイロット版 / 新装版 / コミックス等） | 並存する別の編集単位。ver とは異なる。各々が独自の話数体系を持つ。※マンガ固有 |
+| **episode** | ある edition での各話の配置 | ここで初めて話数が決まる（同じ話がパイロット版 #96・新装版 #26）。※マンガ固有 |
+| **deliverable** | リリースの単位（世に出る成果物） | release が指す先。「リリースの単位になるか」が deliverable と asset を分ける線。一意の決まり方は種別ごとに違う（マンガ＝edition×話数×言語で例：新装版・#26・JP＝4枚JPEG、アプリ＝version＝apk、書籍＝章/巻＝EPUB、3Dモデル販売＝fbx）。ver（更新履歴）を持つ |
 | **file** | 成果物を構成する個々のファイル | 例：4 枚の JPEG の 1 枚 |
-| **asset** | 再利用される中核資産（3Dモデル等） | STUDIO MeowToon の資産台帳を兼ねる。deliverable と多対多で再利用。asset_kind（humanoid/furniture/plant）で分類 |
+| **asset** | 再利用単位のラベリング（「水着エミリー」等） | ファイル（画像/fbx/音声/テクスチャ/フォント）そのものではない。再利用する意味あるまとまりを括る単位。3Dモデルに限らない。STUDIO MeowToon の資産台帳を兼ねる。素材の分解は実務の粒度で止める。asset_kind（3Dモデル/テクスチャ/音声/フォント…）で分類 |
 | **task** | 工程（末端の作業） | deliverable や asset を作る。mode（P/T/C/A）と sp を持つ |
 | **slot** | 15 分固定の時間枠（実績） | category（8値）を持つ。**15分固定は動かさない** |
 | **assignment** | task と slot を結ぶ | 各 assignment は時間を持たない（slot が大枠で何に使ったかを表す） |
 | **channel** | 公開先（X / LINEマンガ / BOOTH / Google Play / Kindle 等） | マスタ（増える・被参照） |
 | **release** | deliverable を channel へ公開する 1 回 | **締切（due_at）がここに乗る。** 「媒体と締切りが不可欠」の帰結 |
 
+**deliverable と asset の関係（含有ではない）**：deliverable は asset を**含有（所有）しない**。
+含有だと asset がその deliverable 専用になり、再利用できなくなる。両者は**多対多**で、
+中間テーブルが「どの deliverable が・どの asset を使うか」を記録する。
+1 つの asset（「水着エミリー」等）が複数の deliverable から使われる。
+画像の再利用も、この中間テーブルで表す（asset は用途を持たず、使われ方は中間テーブルが表す）。
+
 ### 5-3. マスタは enum か table か（判定基準）
 
 固定分類は enum（zod enum ＋ SQLite CHECK）、増える・属性を持つ・被参照のものは table とする。
 - **enum**：language（JP/EN）、format（image/fbx/apk/epub）、mode（P/T/C/A）、category（8値）、status。
-- **table**：edition、channel、asset_kind、story 等（行が増え、データとして育つ）。
+- **table**：edition、channel、asset_kind、series 等（行が増え、データとして育つ）。
 
 ### 5-4. 締切という装置（release に宿る）
 
@@ -372,8 +386,8 @@ Node.js + TypeScript で実装する（旧 gentask を継ぐ。ただし genkit/
 ## 15. 未解決の宿題（次セッションの起点）
 
 **このセッションで確定したこと**：
-- 中心の取り違えを正した（タスクは中心でなく末端の工程。中心は成果物＝deliverable と物語＝story）。
-- 概念を抽出した（story / edition / episode / deliverable / file / asset / task / slot / assignment / channel / release）。
+- 中心の取り違えを正した（タスクは中心でなく末端の工程。中心は世に出る成果物＝deliverable）。
+- 概念を抽出した（content / series / edition / episode / deliverable / file / asset / task / slot / assignment / channel / release）。
 - edition（版：パイロット/新装、並存・独自の話数体系）と ver（成果物の更新履歴）は別概念、と切り分けた。
 - deliverable は edition × 話数 × 言語で一意（例：新装版・#26・JP＝4枚JPEG）。
 - asset は再利用資産＝資産台帳を兼ね、deliverable と多対多。
@@ -383,9 +397,9 @@ Node.js + TypeScript で実装する（旧 gentask を継ぐ。ただし genkit/
 **残る宿題**：
 - **ER の詳細確定＝次の着手点。** テーブル・カラム・キー・カーディナリティ。特に未解決：
   - task が deliverable と asset の両方を作る（両 FK nullable）問題 — サブタイプ分割すべきか。
-  - deliverable がゲーム（apk・story/episode を持たない？）も扱えるか — 粒度が漫画に寄っていないか。
+  - deliverable がゲーム（apk・series/edition/episode を持たない）も扱えるか — 粒度が漫画に寄っていないか。
   - ver（deliverable の更新履歴）と file の関係 — git 履歴で表すか、テーブルで持つか。
-  - story（物語）と episode の中間、話数を持つ関連実体の厳密化。
+  - series（生活編/秘宝編）と edition と episode の関係の厳密化（どこで話数が決まるか）。
 - 申告を「決定的に」盤面へ落とす関門の具体（LLM の変換結果をツールがどう検証し、怪しければ人間に返すか）。
 - 編集者エージェントの効用関数・緊張度の閾値・キャラの具体（第7章の続き。Animo は思想源泉・別実装）。
 - 「その他（O）」の恒久箱を作るか（原則反対。作るなら「未分類の一時保留」に限定）。
