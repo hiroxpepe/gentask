@@ -317,15 +317,25 @@ Node.js + TypeScript で実装する（旧 gentask を継ぐ。ただし genkit/
 例外として、**毎朝叩く閲覧コマンドだけはトップレベルの最短形**にする（頻度最高のものを最短に、という実用優先の判断）。
 
 ### 10-2. コマンド一覧
+共通骨格（第5章・`docs/er_phase1.md`）の各実体に対応させる。種別固有 detail のコマンドはフェーズ2。
+
 | 分類 | コマンド | 役割 |
 |---|---|---|
-| content | `content add <title> --kind <4pnl\|3dmd\|…>` / `content list` / `content done <uuid>` | 作品の作成・一覧・完成（PNG化） |
-| task | `task add <content-uuid> <title> --mode <P\|T\|C\|A> --sub-role <plot\|name\|post> --sp <n>` / `task list [--content <uuid>]` / `task move <uuid> <column>` | 工程の追加・一覧・カンバン列移動 |
-| slot | `slot log (--from <t> --to <t> \| --last <2h>) --cat <8値> [--task <uuid>]` / `slot list --day <date>` | 実績の枠を範囲／相対で一括記録・一覧 |
-| assignment | `slot assign <task-uuid> <slot-uuid>` / `slot repaint <slot-uuid> --cat <…> [--task <uuid>]` / `slot unassign <assignment-uuid>` | 割り当て・実績の塗り替え・解除 |
+| content | `content add <title> --kind <manga\|game\|book\|model3d>` / `content list` | リリース区分の作成・一覧 |
+| deliverable | `deliverable add <content-uuid>` / `deliverable list [--content <uuid>]` / `deliverable bump <uuid>` | リリース単位の作成・一覧・ver 更新 |
+| release | `release add <deliverable-uuid> <channel-uuid> --due <date>` / `release list` / `release done <uuid>` | 公開の予約（締切）・一覧・公開済みに |
+| channel | `channel add <name>` / `channel list` | 公開先マスタの登録・一覧 |
+| asset | `asset add <label> --kind <model\|texture\|audio\|font\|image>` / `asset list` | 再利用単位（「水着エミリー」等）の登録・一覧 |
+| deliverable_asset | `deliverable use <deliverable-uuid> <asset-uuid>` / `deliverable assets <deliverable-uuid>` | 成果物が使う asset の紐付け・確認 |
+| task | `task add <content-uuid> <title> --mode <P\|T\|C\|A> --sp <n>` / `task list [--content <uuid>]` / `task move <uuid> <col>` | 工程の追加・一覧・カンバン列移動（予定＝this-week/next-week/someday） |
+| slot | `slot log (--from <t> --to <t> \| --last <2h>) --cat <8値> [--task <uuid>]` / `slot list --day <date>` | 実績の枠を範囲／相対で一括記録・一覧。**`--task` を付けると生成した全枠を即その task に割り当て**（記録と紐付けを一手で＝手入力地獄を避ける） |
+| assignment | `slot assign <task-uuid> <slot-uuid>` / `slot unassign <task-uuid> <slot-uuid>` | 事後の割り当て・解除（通常は `slot log --task` で済むので手動 assign は補助） |
 | 閲覧（体重計） | `today` / `week` | 今日／今週の実績（＋予定）を見る。毎朝のトリガー（第13章）。トップレベル最短形。 |
 | 週次（締切） | `sprint close` / `sprint status` | 週を締めて繰り上げ（slide）／締切状況（編集者の緊張度の素） |
 | 基盤 | `init` / `sync` / `inbox` | リポジトリ初期化（.db 作成）／.db⇔CSV 吐き出し＋git commit／外部タスク取り込み |
+
+> 廃止した旧コマンド：`content done`（PNG化）、`task --sub-role <plot\|name\|post>`（series 化で消滅）、`slot repaint`（assign/unassign に統合）。
+> 締切は content でなく release に宿るため、完成の概念は `release done` が担う。
 
 ### 10-3. 実績記録の粒度（手で叩ける現実性）
 1 枠（15分）ずつ叩かせる設計は、手では続かない（M365 の手入力地獄の再来）。ゆえに：
