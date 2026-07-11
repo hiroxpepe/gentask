@@ -5,26 +5,24 @@
 ## 🧭 現在地と次の一手（最優先で読め）
 
 ### 現在地
-`docs/new_spec_gentask_JP.md` 第5章（データモデル）の**概念の是正は完了**（push 済み）。
-概念レベルは整合が取れた。次は **ER の詳細検討**（テーブル・カラム・キー・カーディナリティ）。
+第5章（概念）の是正は完了。**ER フェーズ1（共通骨格）も完了**（push 済み）。
+ER 図は仕様と分け、**別ドキュメント `docs/er_phase1.md`（英語）** に置いた。
+共通骨格 `content → deliverable → release → channel` が全 4 種別（マンガ/アプリ/書籍/3Dモデル）の
+リリースを通せることを検証済み。
 
-### 次の一手（ER の詳細検討）
-第5章の概念（content 最上位・種別固有群・共通骨格・asset のラベリング・多対多）を踏まえ、
-ER の詳細を詰める。特に未解決の急所：
-- **種別ごとの固有概念群をどう持たせるか**（クラステーブル継承の具体：content ＋ manga_detail/game_detail/book_detail）。
-- deliverable ⇔ asset の中間テーブルの具体（どの deliverable がどの asset を使うか）。
-- deliverable がゲーム（series/edition/episode を持たない）でも成立するか。
-- ver（deliverable の更新履歴）と file の関係（git 履歴で表すか、テーブルで持つか）。
-- series（生活編/秘宝編）と edition と episode の関係（どこで話数が決まるか）。
-- ※ER 図を作る際は mermaid のリレーション空ラベル `: ""` 禁止（11.16.0 で syntax error）。ラベルは必ず埋める。
+### 次の一手（ER フェーズ2 ※着手はマスターの指示を待つ）
+共通骨格の上に、種別ごとの detail を載せる（クラステーブル継承）。
+- content ＋ manga_detail（series/edition/episode）/ app_detail（version/stage）/ book_detail（章/巻）。
+- file テーブル（asset ⇔ file は 1 対多、deliverable ⇔ file）。
+- ver（deliverable の更新履歴）と file の関係。
+- deliverable の位置：detail 確定時に episode 直下へ繋ぎ変わる可能性（今は content 直下）。
+- ※ER 図は `docs/er_phase1.md` に追記 or 続編ドキュメント。mermaid 空ラベル `: ""` 禁止。英語で書く。
 
-### 第5章 是正の記録（完了済み・参考）
-1. ✅ 節番号の重複（5-2/5-3 が二重）→ 5-6/5-7 に振り直し。
-2. ✅ content（最上位の包含者）を概念表に追加。
-3. ✅ story を全廃し series（生活編/秘宝編）に。この粒度に「話の中身＝story」は置かない。「物語」の語も一掃。
-4. ✅ asset を「再利用単位のラベリング（水着エミリー等）」に。3Dモデルに限らず画像/音声/テクスチャ/フォント含む。
-5. ✅ deliverable のマンガ偏りを解消。「リリースの単位」を本質に、種別ごとに一意の決まり方が違う形へ。
-6. ✅ deliverable ⇔ asset は含有ではなく多対多（中間テーブルが使用を記録、再利用も表す）。
+### 済んだこと（参考）
+- 第5章 概念是正（content 最上位 / series（story 廃止）/ asset＝ラベリング / deliverable＝リリース単位 / 多対多）。
+- 「繰り返し間違えやすい区別」を new_spec に明記：**商品は全部 deliverable**（3Dモデルも）、
+  **asset は物理ファイルと 1 対 1 でない**（水着エミリー＝複数ファイルを束ねる、asset ⇔ file は 1 対多）。
+- ER フェーズ1 の共通骨格図を `docs/er_phase1.md`（英語）に作成。
 
 ## ⚠️ Claude への最重要教訓（今回のセッションで痛感）
 - **GO なしにコミット・プッシュ・実装しない。** コミットは許可制。
@@ -40,7 +38,7 @@ ER の詳細を詰める。特に未解決の急所：
 ## 📋 プロジェクト概要
 - リポジトリ：`hiroxpepe/gentask`（public）。ブランチ `master`。
 - 正本仕様：`docs/new_spec_gentask_JP.md`。
-- 参照：`README.md`（英語・mermaid図付き）、`README_JP.md`、`docs/standard/`（writing_standard, tech_terms）。
+- 参照：`docs/er_phase1.md`（ER共通骨格・英語）、`README.md`（英語・mermaid図付き）、`README_JP.md`、`docs/standard/`（writing_standard, tech_terms）。
 
 ## 🔧 環境セットアップ
 - clone して作業。push には hiroxpepe アカウントの PAT（repo スコープ）を都度貼る。
