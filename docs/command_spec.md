@@ -9,6 +9,15 @@ Conventions used below:
 - **15-min grid**: a slot always starts on a 15-minute boundary (00, 15, 30, 45).
 - The tool is deterministic. No guessing. If input is unclear, it errors rather than assume.
 
+**Two layers for classification (`--mode` / `--cat`) — do not confuse them:**
+- **CLI layer (here):** the command takes the class as an explicit, deterministic argument
+  (`slot log --cat C`). No LLM. A human types "this is C" by hand. The CLI never guesses the class.
+- **Conversation layer (above, not in this file):** the human states only the raw fact
+  ("I was drawing the name"); the LLM turns it into `slot log --cat C`. Spec ch.3's
+  "do not put the un-splittable on the human" is about this upper layer.
+- So a human-supplied `--cat` in the CLI is **correct, not a design miss**. A deterministic
+  receiver (CLI) and an LLM that translates raw facts into a class (conversation) coexist.
+
 ---
 
 ## slot log
